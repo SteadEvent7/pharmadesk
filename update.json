@@ -1,9 +1,9 @@
 {
   "version": "1.0.0",
-  "patch": 1,
-  "published_at": "2026-03-13T00:00:00Z",
+  "patch": 2,
+  "published_at": "2026-03-13T21:08:22Z",
   "installer_name": "PharmaDeskSetup.exe",
   "installer_url": "https://github.com/SteadEvent7/pharmadesk/releases/download/v1.0.0/PharmaDeskSetup.exe",
-  "notes": "- Patch 1 de validation du systeme de mise a jour distante\n- Correction du stockage utilisateur hors Program Files\n- Bouton de verification des mises a jour mis en avant dans Parametres",
-  "sha256": "3514bffaf20e62e7c9a75fbcaa0721440cf652ce9703c6c07a50411af4525889"
+  "notes": "- Patch 2: uniformisation du theme sur l'ensemble de l'application\n- Ajout du theme confort visuel et application immediate des preferences\n- Ajout d'un historique structure des mises a jour dans Parametres",
+  "sha256": "8fe6d913904d214e6a3630beff3defe7a8e16b81c741d63b26d2da42efb1895c"
 }

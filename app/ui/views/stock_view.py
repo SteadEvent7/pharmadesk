@@ -6,6 +6,7 @@ from tkinter import messagebox, ttk
 from app.services.auth_service import AuthenticatedUser
 from app.config import CONFIG
 from app.services.pharmacy_service import pharmacy_service
+from app.ui.theme import COLORS
 from app.ui.widgets import LabeledCombobox, LabeledEntry, TreeSection
 
 
@@ -48,9 +49,9 @@ class StockView(ttk.Frame):
         self.inventory_table.tree.column("quantity", width=90, anchor="center")
         self.inventory_table.tree.column("expiration_date", width=120)
         self.inventory_table.tree.column("supplier_name", width=180)
-        self.inventory_table.tree.tag_configure("stock_low", background="#fde68a")
-        self.inventory_table.tree.tag_configure("stock_ok", background="#dcfce7")
-        self.inventory_table.tree.tag_configure("stock_empty", background="#fecaca")
+        self.inventory_table.tree.tag_configure("stock_low", background=COLORS["stock_low_bg"], foreground=COLORS["text"])
+        self.inventory_table.tree.tag_configure("stock_ok", background=COLORS["stock_ok_bg"], foreground=COLORS["text"])
+        self.inventory_table.tree.tag_configure("stock_empty", background=COLORS["stock_empty_bg"], foreground=COLORS["text"])
 
         ttk.Label(self, text="Historique des mouvements", style="Section.TLabel").pack(anchor="w", pady=(18, 8))
         self.movements_table = TreeSection(

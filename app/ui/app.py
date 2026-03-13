@@ -8,7 +8,7 @@ from app.config import CONFIG
 from app.db.schema import initialize_database
 from app.services.auth_service import AuthenticatedUser
 from app.services.update_service import UpdateCheckResult, update_service
-from app.ui.theme import apply_theme
+from app.ui.theme import COLORS, apply_theme
 from app.ui.views.billing_view import BillingView
 from app.ui.views.dashboard_view import DashboardView
 from app.ui.views.login_view import LoginView
@@ -103,31 +103,31 @@ class PharmacyApp:
         self._schedule_startup_update_check()
 
     def _build_topbar(self, parent: ttk.Frame) -> None:
-        topbar = tk.Frame(parent, bg="#0b5cab", height=52)
+        topbar = tk.Frame(parent, bg=COLORS["shell_topbar"], height=52)
         topbar.pack(fill="x")
         topbar.pack_propagate(False)
 
-        left = tk.Frame(topbar, bg="#0b5cab")
+        left = tk.Frame(topbar, bg=COLORS["shell_topbar"])
         left.pack(side="left", fill="y")
-        tk.Label(left, text="   PharmaDesk  •  Point de Vente", bg="#0b5cab", fg="#ffffff", font=("Segoe UI Semibold", 13)).pack(side="left", padx=14)
+        tk.Label(left, text="   PharmaDesk  •  Point de Vente", bg=COLORS["shell_topbar"], fg=COLORS["shell_sidebar_text"], font=("Segoe UI Semibold", 13)).pack(side="left", padx=14)
 
-        right = tk.Frame(topbar, bg="#0b5cab")
+        right = tk.Frame(topbar, bg=COLORS["shell_topbar"])
         right.pack(side="right", fill="y", padx=12)
         tk.Label(
             right,
             text=f"{self.current_user.full_name}  |  {self.current_user.role.title()}",
-            bg="#0b5cab",
-            fg="#ffffff",
+            bg=COLORS["shell_topbar"],
+            fg=COLORS["shell_sidebar_text"],
             font=("Segoe UI", 10),
         ).pack(side="left", padx=(0, 16))
         tk.Button(
             right,
             text="Deconnexion",
             command=self.show_login,
-            bg="#d94841",
-            fg="#ffffff",
-            activebackground="#bf3b35",
-            activeforeground="#ffffff",
+            bg=COLORS["shell_topbar_button"],
+            fg=COLORS["shell_sidebar_text"],
+            activebackground=COLORS["shell_topbar_button_active"],
+            activeforeground=COLORS["shell_sidebar_text"],
             relief="flat",
             padx=14,
             pady=6,
@@ -135,14 +135,14 @@ class PharmacyApp:
         ).pack(side="left")
 
     def _build_sidebar(self, parent: ttk.Frame) -> None:
-        self.sidebar = tk.Frame(parent, bg="#124d95", width=230)
+        self.sidebar = tk.Frame(parent, bg=COLORS["shell_sidebar"], width=230)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
         tk.Label(
             self.sidebar,
             text="Magasin POS",
-            bg="#124d95",
-            fg="#ffffff",
+            bg=COLORS["shell_sidebar"],
+            fg=COLORS["shell_sidebar_text"],
             font=("Segoe UI Semibold", 14),
             anchor="w",
             padx=14,
@@ -179,8 +179,8 @@ class PharmacyApp:
             tk.Label(
                 self.sidebar,
                 text=title,
-                bg="#124d95",
-                fg="#d8e8ff",
+                bg=COLORS["shell_sidebar"],
+                fg=COLORS["shell_sidebar_section"],
                 font=("Segoe UI Semibold", 9),
                 anchor="w",
                 padx=12,
@@ -191,7 +191,7 @@ class PharmacyApp:
                     continue
                 self._add_nav_button(key, label)
 
-        spacer = tk.Frame(self.sidebar, bg="#124d95")
+        spacer = tk.Frame(self.sidebar, bg=COLORS["shell_sidebar"])
         spacer.pack(fill="both", expand=True)
         self._add_nav_button("settings", "Parametres")
 
@@ -204,10 +204,10 @@ class PharmacyApp:
             justify="left",
             relief="flat",
             borderwidth=0,
-            bg="#124d95",
-            fg="#ffffff",
-            activebackground="#1f73d0",
-            activeforeground="#ffffff",
+            bg=COLORS["shell_sidebar"],
+            fg=COLORS["shell_sidebar_text"],
+            activebackground=COLORS["shell_sidebar_active"],
+            activeforeground=COLORS["shell_sidebar_text"],
             padx=18,
             pady=10,
             font=("Segoe UI Semibold", 10),
@@ -238,7 +238,7 @@ class PharmacyApp:
         self.billing_view = BillingView(self.content_host, self.current_user)
         self.suppliers_view = SuppliersView(self.content_host, self.current_user, self.refresh_all)
         self.reports_view = ReportsView(self.content_host, self.current_user) if self.current_user and self.current_user.role == "administrateur" else None
-        self.settings_view = SettingsView(self.content_host, self.current_user, self.refresh_all)
+        self.settings_view = SettingsView(self.content_host, self.current_user, self.apply_user_preferences)
 
         self.users_view = UsersView(self.content_host, self.current_user) if self.current_user and self.current_user.role == "administrateur" else None
         self.views = {
@@ -272,7 +272,7 @@ class PharmacyApp:
     def _set_active_nav(self, active_key: str) -> None:
         for key, button in self.nav_buttons.items():
             is_active = key == active_key
-            button.configure(bg="#1f73d0" if is_active else "#124d95")
+            button.configure(bg=COLORS["shell_sidebar_active"] if is_active else COLORS["shell_sidebar"])
 
     def _page_metadata(self, key: str) -> tuple[str, str]:
         metadata = {
@@ -307,13 +307,23 @@ class PharmacyApp:
         if self.reports_view is not None:
             self.reports_view.refresh()
 
+    def apply_user_preferences(self) -> None:
+        active_view = self.current_view_key or "dashboard"
+        self._apply_runtime_theme()
+        if self.current_user is None:
+            self.show_login()
+            return
+        self.show_main_shell()
+        if active_view in self.views:
+            self.show_view(active_view)
+
     def _schedule_startup_update_check(self) -> None:
         if not self.current_user or self.current_user.role != "administrateur":
             return
         if not CONFIG.auto_check_updates or self._startup_update_check_scheduled:
             return
         self._startup_update_check_scheduled = True
-        self.root.after(900, lambda: update_service.check_for_updates_async(self.root, self._handle_startup_update_result))
+        self.root.after(900, lambda: update_service.check_for_updates_async(self.root, self._handle_startup_update_result, source="demarrage"))
 
     def _handle_startup_update_result(self, result: UpdateCheckResult) -> None:
         self.settings_view.present_update_result(result, ask_to_download=False, silent=True)

@@ -1,3 +1,3 @@
 APP_NAME = "PharmaDesk"
 APP_VERSION = "1.0.0"
-APP_PATCH = 1
+APP_PATCH = 2

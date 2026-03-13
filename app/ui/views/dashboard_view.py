@@ -4,7 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from app.services.pharmacy_service import pharmacy_service
-from app.ui.theme import COLORS
+from app.ui.theme import COLORS, current_colors, mix_colors
 from app.ui.widgets import MetricCard, TreeSection
 from app.utils.currency import format_currency
 
@@ -39,7 +39,7 @@ class DashboardView(ttk.Frame):
         trend_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         ttk.Label(trend_card, text="Tendance des ventes", style="Section.TLabel").pack(anchor="w")
         ttk.Label(trend_card, text="Evolution mensuelle sur la periode selectionnee.", style="Subtitle.TLabel").pack(anchor="w", pady=(4, 10))
-        self.chart_canvas = tk.Canvas(trend_card, bg="#ffffff", highlightthickness=0, height=320)
+        self.chart_canvas = tk.Canvas(trend_card, bg=COLORS["input_bg"], highlightthickness=0, height=320)
         self.chart_canvas.pack(fill="both", expand=True)
         self.chart_canvas.bind("<Configure>", self._on_chart_resize)
 
@@ -86,8 +86,10 @@ class DashboardView(ttk.Frame):
         self._draw_trend_chart()
 
     def _draw_trend_chart(self) -> None:
+        colors = current_colors()
         canvas = self.chart_canvas
         canvas.delete("all")
+        canvas.configure(bg=colors["input_bg"])
 
         width = max(canvas.winfo_width(), 320)
         height = max(canvas.winfo_height(), 260)
@@ -96,11 +98,16 @@ class DashboardView(ttk.Frame):
         top = 18
         bottom = height - 38
 
-        canvas.create_line(left, top, left, bottom, fill="#c7d2e3", width=1)
-        canvas.create_line(left, bottom, right, bottom, fill="#c7d2e3", width=1)
+        axis_color = mix_colors(colors["border"], colors["muted"], 0.2)
+        grid_color = mix_colors(colors["panel_alt"], colors["border"], 0.4)
+        tick_color = mix_colors(colors["muted"], colors["panel"], 0.15)
+        line_color = colors["primary"]
+
+        canvas.create_line(left, top, left, bottom, fill=axis_color, width=1)
+        canvas.create_line(left, bottom, right, bottom, fill=axis_color, width=1)
 
         if not self.chart_data:
-            canvas.create_text(width / 2, height / 2, text="Aucune vente sur la periode.", fill="#64748b", font=("Segoe UI", 11))
+            canvas.create_text(width / 2, height / 2, text="Aucune vente sur la periode.", fill=colors["muted"], font=("Segoe UI", 11))
             return
 
         max_total = max(float(item["total"]) for item in self.chart_data)
@@ -112,8 +119,8 @@ class DashboardView(ttk.Frame):
             ratio = step / steps
             y = bottom - ((bottom - top) * ratio)
             value = max_total * ratio
-            canvas.create_line(left, y, right, y, fill="#eef2f7", width=1)
-            canvas.create_text(left - 10, y, text=f"{value:.0f}", fill="#94a3b8", font=("Segoe UI", 8))
+            canvas.create_line(left, y, right, y, fill=grid_color, width=1)
+            canvas.create_text(left - 10, y, text=f"{value:.0f}", fill=tick_color, font=("Segoe UI", 8))
 
         count = len(self.chart_data)
         x_gap = (right - left) / max(count - 1, 1)
@@ -123,11 +130,11 @@ class DashboardView(ttk.Frame):
             x = left + (index * x_gap)
             y = bottom - ((total / max_total) * (bottom - top))
             points.extend([x, y])
-            canvas.create_text(x, bottom + 16, text=str(item["label"]), fill="#64748b", font=("Segoe UI", 9))
-            canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill="#2f80ed", outline="#2f80ed")
+            canvas.create_text(x, bottom + 16, text=str(item["label"]), fill=colors["muted"], font=("Segoe UI", 9))
+            canvas.create_oval(x - 3, y - 3, x + 3, y + 3, fill=line_color, outline=line_color)
 
         if len(points) >= 4:
-            canvas.create_line(*points, fill="#2f80ed", width=3, smooth=True)
+            canvas.create_line(*points, fill=line_color, width=3, smooth=True)
         elif len(points) == 2:
             x, y = points
-            canvas.create_oval(x - 4, y - 4, x + 4, y + 4, fill="#2f80ed", outline="#2f80ed")
+            canvas.create_oval(x - 4, y - 4, x + 4, y + 4, fill=line_color, outline=line_color)

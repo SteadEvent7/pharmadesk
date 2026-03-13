@@ -42,6 +42,7 @@ class AppConfig:
     update_download_dir: str = str(DATA_DIR / "updates")
     update_installer_args: str = "/CLOSEAPPLICATIONS /NORESTART"
     currency_code: str = "XOF"
+    theme_code: str = "light"
 
     @classmethod
     def load(cls) -> "AppConfig":

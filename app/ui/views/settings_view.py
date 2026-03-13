@@ -8,6 +8,7 @@ from app.config import CONFIG
 from app.services.backup_service import backup_service
 from app.services.pharmacy_service import pharmacy_service
 from app.services.update_service import UpdateCheckResult, UpdateManifest, update_service
+from app.ui.theme import current_colors, get_theme_label, get_theme_options
 from app.ui.widgets import TreeSection
 from app.utils.currency import AFRICAN_CURRENCIES
 
@@ -24,7 +25,21 @@ class SettingsView(ttk.Frame):
         self.auto_update_var = tk.BooleanVar(value=CONFIG.auto_check_updates)
         self.update_status_var = tk.StringVar(value="Aucune verification effectuee.")
         self.update_progress_var = tk.DoubleVar(value=0.0)
-        summary = ttk.Frame(self, style="Card.TFrame", padding=20)
+        self.theme_options = get_theme_options()
+        self.theme_label_var = tk.StringVar(value=get_theme_label(CONFIG.theme_code))
+        self.scroll_canvas = tk.Canvas(self, highlightthickness=0, bd=0, bg=current_colors()["bg"])
+        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.scroll_canvas.yview)
+        self.scroll_canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.content = ttk.Frame(self.scroll_canvas)
+        self.content_window = self.scroll_canvas.create_window((0, 0), window=self.content, anchor="nw")
+        self.content.bind("<Configure>", self._on_content_configure)
+        self.scroll_canvas.bind("<Configure>", self._on_canvas_configure)
+        self.scroll_canvas.bind_all("<MouseWheel>", self._on_mousewheel, add="+")
+
+        summary = ttk.Frame(self.content, style="Card.TFrame", padding=20)
         summary.pack(fill="x")
         ttk.Label(summary, text="Configuration generale", style="Section.TLabel").pack(anchor="w")
 
@@ -38,6 +53,7 @@ class SettingsView(ttk.Frame):
             ("manifest", "Manifest distant", CONFIG.update_manifest_url or "Derive du depot GitHub"),
             ("auto_update", "Verification auto", "Oui" if CONFIG.auto_check_updates else "Non"),
             ("currency", "Devise active", CONFIG.currency_code),
+            ("theme", "Theme actif", get_theme_label(CONFIG.theme_code)),
         ]
 
         grid = ttk.Frame(summary, style="Card.TFrame")
@@ -50,7 +66,38 @@ class SettingsView(ttk.Frame):
             ttk.Label(row, textvariable=self.summary_vars[key]).pack(side="left")
         grid.columnconfigure(0, weight=1)
 
-        update_card = ttk.Frame(self, style="Card.TFrame", padding=20)
+        currency_card = ttk.Frame(self.content, style="Card.TFrame", padding=20)
+        currency_card.pack(fill="x", pady=(14, 0))
+        ttk.Label(currency_card, text="Devise", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(currency_card, text="Choisissez la devise d'affichage des montants.", style="Subtitle.TLabel").pack(anchor="w", pady=(10, 0))
+        self.currency_options = {details["label"]: code for code, details in AFRICAN_CURRENCIES.items()}
+        current_label = AFRICAN_CURRENCIES.get(CONFIG.currency_code, AFRICAN_CURRENCIES["XOF"])["label"]
+        self.currency_label_var = tk.StringVar(value=current_label)
+        row = ttk.Frame(currency_card, style="Card.TFrame")
+        row.pack(fill="x", pady=(12, 0))
+        self.currency_combo = ttk.Combobox(row, textvariable=self.currency_label_var, values=list(self.currency_options.keys()), state="readonly", width=34)
+        self.currency_combo.pack(side="left")
+        self.apply_currency_button = ttk.Button(row, text="Appliquer", style="Primary.TButton", command=self.save_currency)
+        self.apply_currency_button.pack(side="left", padx=10)
+
+        theme_card = ttk.Frame(self.content, style="Card.TFrame", padding=20)
+        theme_card.pack(fill="x", pady=(14, 0))
+        ttk.Label(theme_card, text="Theme et confort visuel", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(
+            theme_card,
+            text="Choisissez un affichage plus reposant pour les utilisateurs sensibles a la luminosite ou ayant des problemes d'yeux.",
+            style="Subtitle.TLabel",
+            wraplength=820,
+            justify="left",
+        ).pack(anchor="w", pady=(10, 0))
+        theme_row = ttk.Frame(theme_card, style="Card.TFrame")
+        theme_row.pack(fill="x", pady=(12, 0))
+        self.theme_combo = ttk.Combobox(theme_row, textvariable=self.theme_label_var, values=list(self.theme_options.keys()), state="readonly", width=34)
+        self.theme_combo.pack(side="left")
+        self.apply_theme_button = ttk.Button(theme_row, text="Appliquer le theme", style="Secondary.TButton", command=self.save_theme)
+        self.apply_theme_button.pack(side="left", padx=10)
+
+        update_card = ttk.Frame(self.content, style="Card.TFrame", padding=20)
         update_card.pack(fill="x", pady=(14, 0))
         ttk.Label(update_card, text="Mises a jour distantes", style="Section.TLabel").pack(anchor="w")
         ttk.Label(
@@ -88,8 +135,8 @@ class SettingsView(ttk.Frame):
             height=6,
             wrap="word",
             relief="flat",
-            bg="#f8fafc",
-            fg="#0f172a",
+            bg=current_colors()["input_bg"],
+            fg=current_colors()["input_fg"],
             padx=10,
             pady=10,
             font=("Segoe UI", 9),
@@ -98,21 +145,21 @@ class SettingsView(ttk.Frame):
         self.update_notes.insert("1.0", "Les notes de version apparaitront ici apres verification du manifest distant.\nJournal: data/logs/update.log")
         self.update_notes.configure(state="disabled")
 
-        currency_card = ttk.Frame(self, style="Card.TFrame", padding=20)
-        currency_card.pack(fill="x", pady=(14, 0))
-        ttk.Label(currency_card, text="Devise", style="Section.TLabel").pack(anchor="w")
-        ttk.Label(currency_card, text="Choisissez la devise d'affichage des montants.", style="Subtitle.TLabel").pack(anchor="w", pady=(10, 0))
-        self.currency_options = {details["label"]: code for code, details in AFRICAN_CURRENCIES.items()}
-        current_label = AFRICAN_CURRENCIES.get(CONFIG.currency_code, AFRICAN_CURRENCIES["XOF"])["label"]
-        self.currency_label_var = tk.StringVar(value=current_label)
-        row = ttk.Frame(currency_card, style="Card.TFrame")
-        row.pack(fill="x", pady=(12, 0))
-        self.currency_combo = ttk.Combobox(row, textvariable=self.currency_label_var, values=list(self.currency_options.keys()), state="readonly", width=34)
-        self.currency_combo.pack(side="left")
-        self.apply_currency_button = ttk.Button(row, text="Appliquer", style="Primary.TButton", command=self.save_currency)
-        self.apply_currency_button.pack(side="left", padx=10)
+        ttk.Label(update_card, text="Historique des mises a jour", style="Section.TLabel").pack(anchor="w", pady=(16, 8))
+        self.update_history_table = TreeSection(
+            update_card,
+            ["created_at", "action", "status", "source", "version", "message"],
+            ["Date", "Action", "Statut", "Source", "Version", "Detail"],
+        )
+        self.update_history_table.pack(fill="both", expand=True)
+        self.update_history_table.tree.column("created_at", width=150)
+        self.update_history_table.tree.column("action", width=120, anchor="center")
+        self.update_history_table.tree.column("status", width=110, anchor="center")
+        self.update_history_table.tree.column("source", width=90, anchor="center")
+        self.update_history_table.tree.column("version", width=120, anchor="center")
+        self.update_history_table.tree.column("message", width=380)
 
-        help_card = ttk.Frame(self, style="Card.TFrame", padding=20)
+        help_card = ttk.Frame(self.content, style="Card.TFrame", padding=20)
         help_card.pack(fill="x", pady=(14, 0))
         ttk.Label(help_card, text="Maintenance et mises a jour", style="Section.TLabel").pack(anchor="w")
         ttk.Label(
@@ -144,9 +191,9 @@ class SettingsView(ttk.Frame):
         self.restore_button = ttk.Button(buttons, text="Restaurer SQLite", style="Secondary.TButton", command=self.restore_data)
         self.restore_button.pack(side="left")
 
-        ttk.Label(self, text="Historique sauvegardes et restaurations", style="Section.TLabel").pack(anchor="w", pady=(18, 8))
+        ttk.Label(self.content, text="Historique sauvegardes et restaurations", style="Section.TLabel").pack(anchor="w", pady=(18, 8))
         self.maintenance_table = TreeSection(
-            self,
+            self.content,
             ["created_at", "user_name", "event_type", "source_path", "target_path", "safety_backup_path"],
             ["Date", "Utilisateur", "Type", "Source", "Destination", "Copie secours"],
         )
@@ -160,6 +207,8 @@ class SettingsView(ttk.Frame):
             ).pack(anchor="w", pady=(12, 0))
             self.currency_combo.state(["disabled"])
             self.apply_currency_button.state(["disabled"])
+            self.theme_combo.state(["disabled"])
+            self.apply_theme_button.state(["disabled"])
             self.auto_check_button.state(["disabled"])
             self.update_button.state(["disabled"])
             self.install_update_button.state(["disabled"])
@@ -167,6 +216,31 @@ class SettingsView(ttk.Frame):
             self.restore_button.state(["disabled"])
         else:
             self.install_update_button.state(["disabled"])
+
+    def _on_content_configure(self, _event: tk.Event) -> None:
+        self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event: tk.Event) -> None:
+        self.scroll_canvas.itemconfigure(self.content_window, width=event.width)
+
+    def _on_mousewheel(self, event: tk.Event) -> None:
+        if not self.winfo_exists():
+            return
+        self.scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def save_theme(self) -> None:
+        selected_label = self.theme_label_var.get().strip()
+        theme_code = self.theme_options.get(selected_label)
+        if not theme_code:
+            messagebox.showwarning("Parametres", "Selectionnez un theme valide.")
+            return
+        CONFIG.theme_code = theme_code
+        CONFIG.save()
+        pharmacy_service.record_audit(self.current_user.id, "modifier", "parametre", f"Theme change vers {theme_code}")
+        self.refresh()
+        if callable(self.on_settings_changed):
+            self.on_settings_changed()
+        messagebox.showinfo("Parametres", "Theme applique.")
 
     def save_currency(self) -> None:
         if not self.is_admin:
@@ -192,7 +266,7 @@ class SettingsView(ttk.Frame):
         self.update_progress_var.set(0)
         self.update_status_var.set("Verification du manifest distant en cours...")
         self.update_button.state(["disabled"])
-        update_service.check_for_updates_async(self, lambda result: self.present_update_result(result, ask_to_download=True, silent=False))
+        update_service.check_for_updates_async(self, lambda result: self.present_update_result(result, ask_to_download=True, silent=False), source="manuel")
 
     def toggle_auto_updates(self) -> None:
         if not self.is_admin:
@@ -219,6 +293,7 @@ class SettingsView(ttk.Frame):
 
         if result.manifest is not None:
             self._set_update_notes(result.manifest)
+        self.refresh_update_history()
         if result.available and result.manifest is not None:
             self.update_status_var.set(
                 f"Nouvelle version detectee: {result.manifest.display_version}. Pret pour telechargement asynchrone."
@@ -260,6 +335,7 @@ class SettingsView(ttk.Frame):
                 path,
                 ask_install,
             ),
+            source="manuel",
         )
         if not started:
             self.update_button.state(["!disabled"])
@@ -286,6 +362,7 @@ class SettingsView(ttk.Frame):
         self.update_progress_var.set(100)
         self.update_status_var.set(message)
         self.install_update_button.state(["!disabled"])
+        self.refresh_update_history()
         pharmacy_service.record_audit(
             self.current_user.id,
             "telecharger",
@@ -306,6 +383,7 @@ class SettingsView(ttk.Frame):
             messagebox.showwarning("Mise a jour", "Aucun installateur n'a encore ete telecharge.")
             return
         success, message = update_service.schedule_installer_launch(self.downloaded_installer_path)
+        self.refresh_update_history()
         if not success:
             messagebox.showerror("Mise a jour", message)
             return
@@ -383,7 +461,14 @@ class SettingsView(ttk.Frame):
         self.summary_vars["manifest"].set(CONFIG.update_manifest_url or "Derive du depot GitHub")
         self.summary_vars["auto_update"].set("Oui" if CONFIG.auto_check_updates else "Non")
         self.summary_vars["currency"].set(CONFIG.currency_code)
+        self.summary_vars["theme"].set(get_theme_label(CONFIG.theme_code))
         self.auto_update_var.set(CONFIG.auto_check_updates)
+        self.theme_label_var.set(get_theme_label(CONFIG.theme_code))
+        current_label = AFRICAN_CURRENCIES.get(CONFIG.currency_code, AFRICAN_CURRENCIES["XOF"])["label"]
+        self.currency_label_var.set(current_label)
+        self.scroll_canvas.configure(bg=current_colors()["bg"])
+        self.update_notes.configure(bg=current_colors()["input_bg"], fg=current_colors()["input_fg"])
+        self.refresh_update_history()
         self.maintenance_table.clear()
         for event in backup_service.list_maintenance_logs():
             self.maintenance_table.tree.insert(
@@ -396,5 +481,21 @@ class SettingsView(ttk.Frame):
                     event.get("source_path") or "-",
                     event.get("target_path") or "-",
                     event.get("safety_backup_path") or "-",
+                ),
+            )
+
+    def refresh_update_history(self) -> None:
+        self.update_history_table.clear()
+        for entry in update_service.list_history(limit=120):
+            self.update_history_table.tree.insert(
+                "",
+                "end",
+                values=(
+                    entry.get("created_at") or "-",
+                    entry.get("action") or "-",
+                    entry.get("status") or "-",
+                    entry.get("source") or "-",
+                    entry.get("version") or "-",
+                    entry.get("message") or entry.get("details") or "-",
                 ),
             )

@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from app.services.auth_service import auth_service
+from app.ui.theme import current_colors, mix_colors, shift_color
 
 
 class LoginView(ttk.Frame):
@@ -42,29 +43,32 @@ class LoginView(ttk.Frame):
         self.after(120, self.username_entry.focus_set)
 
     def _build_card(self) -> None:
+        colors = current_colors()
         self.card.grid_columnconfigure(0, weight=11, minsize=350)
         self.card.grid_columnconfigure(1, weight=9, minsize=380)
         self.card.grid_rowconfigure(0, weight=1)
+
+        self.card.configure(bg=colors["panel"])
 
         self.art_panel = tk.Canvas(
             self.card,
             width=380,
             height=460,
-            bg="#04131d",
+            bg=shift_color(colors["shell_sidebar"], -26),
             highlightthickness=0,
             bd=0,
         )
         self.art_panel.grid(row=0, column=0, sticky="nsew")
 
-        form_panel = tk.Frame(self.card, bg="#f8fafc", padx=42, pady=38)
+        form_panel = tk.Frame(self.card, bg=colors["panel"], padx=42, pady=38)
         form_panel.grid(row=0, column=1, sticky="nsew")
         form_panel.grid_columnconfigure(0, weight=1)
 
         badge = tk.Label(
             form_panel,
             text="PharmaDesk",
-            bg="#dbeafe",
-            fg="#0f3d63",
+            bg=colors["panel_alt"],
+            fg=colors["primary_dark"],
             font=("Segoe UI Semibold", 10),
             padx=12,
             pady=6,
@@ -74,8 +78,8 @@ class LoginView(ttk.Frame):
         title = tk.Label(
             form_panel,
             text="Connexion",
-            bg="#f8fafc",
-            fg="#0f172a",
+            bg=colors["panel"],
+            fg=colors["text"],
             font=("Segoe UI Semibold", 27),
         )
         title.grid(row=1, column=0, sticky="w", pady=(28, 6))
@@ -83,8 +87,8 @@ class LoginView(ttk.Frame):
         subtitle = tk.Label(
             form_panel,
             text="Acces securise a votre espace de gestion officinale.",
-            bg="#f8fafc",
-            fg="#64748b",
+            bg=colors["panel"],
+            fg=colors["muted"],
             justify="left",
             font=("Segoe UI", 10),
         )
@@ -109,10 +113,10 @@ class LoginView(ttk.Frame):
             form_panel,
             text="Se connecter",
             command=self._login,
-            bg="#0f172a",
-            fg="#ffffff",
-            activebackground="#0b1220",
-            activeforeground="#ffffff",
+            bg=colors["primary_dark"],
+            fg=colors["shell_sidebar_text"],
+            activebackground=colors["primary"],
+            activeforeground=colors["shell_sidebar_text"],
             relief="flat",
             bd=0,
             font=("Segoe UI Semibold", 10),
@@ -125,8 +129,8 @@ class LoginView(ttk.Frame):
         helper = tk.Label(
             form_panel,
             text="Compte initial: admin / admin123",
-            bg="#f8fafc",
-            fg="#64748b",
+            bg=colors["panel"],
+            fg=colors["muted"],
             font=("Segoe UI", 9),
         )
         helper.grid(row=6, column=0, sticky="w", pady=(18, 10))
@@ -134,8 +138,8 @@ class LoginView(ttk.Frame):
         security_note = tk.Label(
             form_panel,
             text="Roles geres: administrateur, pharmacien, caissier",
-            bg="#f8fafc",
-            fg="#94a3b8",
+            bg=colors["panel"],
+            fg=mix_colors(colors["muted"], colors["panel"], 0.15),
             font=("Segoe UI", 9),
         )
         security_note.grid(row=7, column=0, sticky="w")
@@ -149,18 +153,19 @@ class LoginView(ttk.Frame):
         variable: tk.Variable,
         show: str | None = None,
     ) -> tuple[tk.Frame, tk.Entry]:
-        wrapper = tk.Frame(parent, bg="#f8fafc")
+        colors = current_colors()
+        wrapper = tk.Frame(parent, bg=colors["panel"])
         wrapper.grid_columnconfigure(0, weight=1)
 
         tk.Label(
             wrapper,
             text=label,
-            bg="#f8fafc",
-            fg="#334155",
+            bg=colors["panel"],
+            fg=mix_colors(colors["text"], colors["muted"], 0.45),
             font=("Segoe UI", 9),
         ).grid(row=0, column=0, sticky="w", pady=(0, 5))
 
-        field = tk.Frame(wrapper, bg="#ffffff", highlightthickness=1, highlightbackground="#dbe2ea")
+        field = tk.Frame(wrapper, bg=colors["input_bg"], highlightthickness=1, highlightbackground=colors["border"])
         field.grid(row=1, column=0, sticky="ew")
         field.grid_columnconfigure(0, weight=1)
 
@@ -170,9 +175,9 @@ class LoginView(ttk.Frame):
             show=show or "",
             relief="flat",
             bd=0,
-            bg="#ffffff",
-            fg="#0f172a",
-            insertbackground="#0f172a",
+            bg=colors["input_bg"],
+            fg=colors["input_fg"],
+            insertbackground=colors["input_fg"],
             font=("Segoe UI", 10),
         )
         entry.grid(row=0, column=0, sticky="ew", padx=12, pady=10)
@@ -193,27 +198,28 @@ class LoginView(ttk.Frame):
         self._draw_art_panel(left_width, card_height)
 
     def _draw_background(self, width: int, height: int) -> None:
+        colors = current_colors()
         for item in self._background_items:
             self.background.delete(item)
         self._background_items.clear()
         self._background_glow_items.clear()
         self._background_glow_specs.clear()
 
-        self.background.configure(bg="#061017")
+        self.background.configure(bg=shift_color(colors["bg"], -34))
         stripes = [
-            ("#0a6d84", 0.0, 0.22),
-            ("#084b66", 0.22, 0.48),
-            ("#052d43", 0.48, 0.76),
-            ("#02070b", 0.76, 1.0),
+            (mix_colors(colors["primary"], colors["shell_topbar"], 0.35), 0.0, 0.22),
+            (mix_colors(colors["shell_topbar"], colors["shell_sidebar"], 0.45), 0.22, 0.48),
+            (shift_color(colors["shell_sidebar"], -18), 0.48, 0.76),
+            (shift_color(colors["bg"], -58), 0.76, 1.0),
         ]
         for color, start, end in stripes:
             item = self.background.create_rectangle(width * start, 0, width * end, height, fill=color, outline="")
             self._background_items.append(item)
 
         glow_specs = [
-            (-0.1, 0.05, 0.52, 1.02, "#0b7285", 0.0),
-            (0.58, -0.1, 1.25, 0.8, "#12364c", 1.3),
-            (0.08, 0.68, 0.72, 1.22, "#145f5c", 2.1),
+            (-0.1, 0.05, 0.52, 1.02, mix_colors(colors["primary"], colors["shell_topbar"], 0.2), 0.0),
+            (0.58, -0.1, 1.25, 0.8, shift_color(colors["shell_sidebar"], -8), 1.3),
+            (0.08, 0.68, 0.72, 1.22, mix_colors(colors["ok"], colors["shell_sidebar"], 0.35), 2.1),
         ]
         for x1, y1, x2, y2, color, phase in glow_specs:
             item = self.background.create_oval(
@@ -232,24 +238,25 @@ class LoginView(ttk.Frame):
         self._update_card_position()
 
     def _draw_art_panel(self, width: int, height: int) -> None:
+        colors = current_colors()
         for item in self._art_items:
             self.art_panel.delete(item)
         self._art_items.clear()
 
         base_layers = [
-            (0, 0, width, height, "#03090d"),
-            (0, height * 0.45, width, height, "#06131c"),
-            (0, 0, width, height * 0.38, "#071b28"),
+            (0, 0, width, height, shift_color(colors["shell_sidebar"], -42)),
+            (0, height * 0.45, width, height, shift_color(colors["shell_sidebar"], -24)),
+            (0, 0, width, height * 0.38, shift_color(colors["shell_topbar"], -22)),
         ]
         for x1, y1, x2, y2, color in base_layers:
             item = self.art_panel.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
             self._art_items.append(item)
 
         bubble_specs = [
-            (-width * 0.25, -height * 0.08, width * 0.5, height * 0.42, "#127ea9"),
-            (width * 0.18, height * 0.12, width * 1.05, height * 0.96, "#0f5f86"),
-            (-width * 0.12, height * 0.42, width * 0.84, height * 1.12, "#1d8b9a"),
-            (width * 0.42, -height * 0.04, width * 1.08, height * 0.48, "#0f172a"),
+            (-width * 0.25, -height * 0.08, width * 0.5, height * 0.42, mix_colors(colors["primary"], colors["shell_topbar"], 0.2)),
+            (width * 0.18, height * 0.12, width * 1.05, height * 0.96, mix_colors(colors["primary_dark"], colors["shell_sidebar"], 0.3)),
+            (-width * 0.12, height * 0.42, width * 0.84, height * 1.12, mix_colors(colors["ok"], colors["shell_sidebar"], 0.45)),
+            (width * 0.42, -height * 0.04, width * 1.08, height * 0.48, shift_color(colors["shell_sidebar"], -38)),
         ]
         for x1, y1, x2, y2, color in bubble_specs:
             item = self.art_panel.create_oval(x1, y1, x2, y2, fill=color, outline="")
@@ -272,7 +279,7 @@ class LoginView(ttk.Frame):
             height,
             0,
             height,
-            fill="#0c4a6e",
+            fill=mix_colors(colors["primary_dark"], colors["shell_sidebar"], 0.55),
             outline="",
             smooth=True,
         )
@@ -295,16 +302,16 @@ class LoginView(ttk.Frame):
             height,
             0,
             height,
-            fill="#082f49",
+            fill=shift_color(colors["shell_sidebar"], -22),
             outline="",
             smooth=True,
         )
         self._art_items.append(wave_two)
 
         swirl_specs = [
-            (width * 0.08, height * 0.18, width * 0.86, height * 1.02, "#38bdf8", 20),
-            (width * 0.12, height * 0.14, width * 0.92, height * 0.94, "#0ea5e9", 12),
-            (width * 0.2, height * 0.1, width * 0.98, height * 0.82, "#022c43", 28),
+            (width * 0.08, height * 0.18, width * 0.86, height * 1.02, mix_colors(colors["accent"], colors["primary"], 0.4), 20),
+            (width * 0.12, height * 0.14, width * 0.92, height * 0.94, mix_colors(colors["primary"], colors["shell_topbar"], 0.15), 12),
+            (width * 0.2, height * 0.1, width * 0.98, height * 0.82, shift_color(colors["shell_sidebar"], -36), 28),
         ]
         for x1, y1, x2, y2, color, size in swirl_specs:
             item = self.art_panel.create_arc(
@@ -325,7 +332,7 @@ class LoginView(ttk.Frame):
             height * 0.08,
             width * 0.26,
             height * 0.18,
-            fill="#d8f1fb",
+            fill=mix_colors(colors["panel"], colors["shell_sidebar_text"], 0.35),
             outline="",
         )
         self._art_items.append(highlight)
@@ -337,7 +344,7 @@ class LoginView(ttk.Frame):
             height * 0.62,
             anchor="nw",
             text="Connectez votre\npharmacie",
-            fill="#f8fafc",
+            fill=colors["shell_sidebar_text"],
             font=("Segoe UI Semibold", 26),
         )
         self._art_items.append(title)
@@ -348,19 +355,20 @@ class LoginView(ttk.Frame):
             anchor="nw",
             width=width * 0.68,
             text="Pilotez les ventes, le stock et les rapports depuis un espace fiable et centralise.",
-            fill="#dbeafe",
+            fill=mix_colors(colors["shell_sidebar_text"], colors["panel_alt"], 0.4),
             font=("Segoe UI", 11),
         )
         self._art_items.append(subtitle)
 
     def _ensure_shadow_items(self) -> None:
+        colors = current_colors()
         if self._shadow_items:
             for item in self._shadow_items:
                 self.background.tag_lower(item, self.card_window)
             return
 
-        outer_shadow = self.background.create_rectangle(0, 0, 0, 0, fill="#020817", outline="")
-        inner_shadow = self.background.create_rectangle(0, 0, 0, 0, fill="#082032", outline="")
+        outer_shadow = self.background.create_rectangle(0, 0, 0, 0, fill=shift_color(colors["bg"], -78), outline="")
+        inner_shadow = self.background.create_rectangle(0, 0, 0, 0, fill=shift_color(colors["shell_sidebar"], -42), outline="")
         self._shadow_items = [outer_shadow, inner_shadow]
         for item in self._shadow_items:
             self.background.tag_lower(item, self.card_window)

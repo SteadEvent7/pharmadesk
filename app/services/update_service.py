@@ -7,6 +7,7 @@ import queue
 import subprocess
 import threading
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -17,6 +18,7 @@ from app.config import CONFIG, DATA_DIR
 
 
 LOG_DIR = DATA_DIR / "logs"
+HISTORY_PATH = DATA_DIR / "update_history.json"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 logger = logging.getLogger("pharmadesk.update")
@@ -69,14 +71,16 @@ class UpdateService:
             return f"https://raw.githubusercontent.com/{owner}/{repo}/main/update.json"
         raise ValueError("Manifest de mise a jour non configure.")
 
-    def check_for_updates(self) -> UpdateCheckResult:
+    def check_for_updates(self, source: str = "manuel") -> UpdateCheckResult:
         manifest_url = ""
         try:
             manifest_url = self.get_manifest_url()
             manifest = self.fetch_manifest()
         except ValueError as error:
             logger.warning("Configuration update invalide: %s", error)
-            return UpdateCheckResult(False, str(error), error=str(error))
+            result = UpdateCheckResult(False, str(error), error=str(error))
+            self.record_history("verification", "erreur", str(error), source=source)
+            return result
         except HTTPError as error:
             logger.warning("Erreur HTTP pendant la verification: %s", error)
             if error.code == 404:
@@ -86,31 +90,39 @@ class UpdateService:
                 )
             else:
                 message = f"Verification des mises a jour impossible (HTTP {error.code})."
-            return UpdateCheckResult(False, message, error=f"{error} | URL: {manifest_url}")
+            result = UpdateCheckResult(False, message, error=f"{error} | URL: {manifest_url}")
+            self.record_history("verification", "erreur", message, source=source)
+            return result
         except (URLError, TimeoutError) as error:
             logger.warning("Erreur reseau pendant la verification: %s", error)
-            return UpdateCheckResult(
+            result = UpdateCheckResult(
                 False,
                 "Verification des mises a jour indisponible. Verifiez votre connexion reseau ou l'URL du manifest.",
                 error=f"{error} | URL: {manifest_url}",
             )
+            self.record_history("verification", "erreur", result.message, source=source)
+            return result
         except Exception as error:
             logger.exception("Erreur inattendue pendant la verification")
-            return UpdateCheckResult(False, "Erreur inattendue pendant la verification des mises a jour.", error=str(error))
+            result = UpdateCheckResult(False, "Erreur inattendue pendant la verification des mises a jour.", error=str(error))
+            self.record_history("verification", "erreur", result.message, source=source)
+            return result
 
         if self._is_remote_newer(manifest):
             message = f"Nouvelle version disponible: {manifest.display_version}"
             logger.info("Mise a jour disponible detectee: %s", manifest.display_version)
+            self.record_history("verification", "disponible", message, manifest=manifest, source=source)
             return UpdateCheckResult(True, message, manifest=manifest)
 
         logger.info("Application deja a jour: %s", self.local_display_version())
+        self.record_history("verification", "ok", "Application deja a jour.", manifest=manifest, source=source)
         return UpdateCheckResult(False, "Application deja a jour.", manifest=manifest)
 
-    def check_for_updates_async(self, root, callback) -> None:
+    def check_for_updates_async(self, root, callback, source: str = "manuel") -> None:
         result_queue: queue.Queue[UpdateCheckResult] = queue.Queue()
 
         def worker() -> None:
-            result_queue.put(self.check_for_updates())
+            result_queue.put(self.check_for_updates(source=source))
 
         def poll() -> None:
             try:
@@ -160,7 +172,7 @@ class UpdateService:
             sha256=str(payload.get("sha256") or "").strip().lower(),
         )
 
-    def download_update_async(self, root, manifest: UpdateManifest, on_progress, on_complete) -> bool:
+    def download_update_async(self, root, manifest: UpdateManifest, on_progress, on_complete, source: str = "manuel") -> bool:
         with self._download_lock:
             if self._download_active:
                 return False
@@ -170,10 +182,13 @@ class UpdateService:
 
         def worker() -> None:
             try:
+                self.record_history("telechargement", "demarre", "Telechargement de l'installateur lance.", manifest=manifest, source=source)
                 installer_path = self._download_update(manifest, event_queue)
+                self.record_history("telechargement", "ok", f"Installateur telecharge: {installer_path}", manifest=manifest, source=source)
                 event_queue.put(("done", installer_path, None, None))
             except Exception as error:
                 logger.exception("Echec du telechargement de mise a jour")
+                self.record_history("telechargement", "erreur", f"Telechargement impossible: {error}", manifest=manifest, source=source)
                 event_queue.put(("error", f"Telechargement impossible: {error}", None, None))
             finally:
                 with self._download_lock:
@@ -248,6 +263,7 @@ class UpdateService:
     def schedule_installer_launch(self, installer_path: str) -> tuple[bool, str]:
         absolute_path = str(Path(installer_path).resolve())
         if not Path(absolute_path).exists():
+            self.record_history("installation", "erreur", "Installateur introuvable.", details=absolute_path)
             return False, "Installateur introuvable."
 
         installer_args = CONFIG.update_installer_args.strip()
@@ -281,10 +297,50 @@ class UpdateService:
             )
         except OSError as error:
             logger.exception("Impossible de preparer le lancement de l'installateur")
+            self.record_history("installation", "erreur", f"Impossible de lancer l'installateur: {error}", details=absolute_path)
             return False, f"Impossible de lancer l'installateur: {error}"
 
         logger.info("Installateur programme avec elevation: %s", absolute_path)
+        self.record_history("installation", "ok", "Installateur programme avec elevation Windows.", details=absolute_path)
         return True, "L'installateur a ete prepare. L'application va se fermer."
+
+    def list_history(self, limit: int = 100) -> list[dict[str, str]]:
+        entries = self._load_history_entries()
+        return entries[:limit]
+
+    def record_history(
+        self,
+        action: str,
+        status: str,
+        message: str,
+        manifest: UpdateManifest | None = None,
+        source: str = "manuel",
+        details: str = "",
+    ) -> None:
+        entries = self._load_history_entries()
+        entry = {
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "action": action,
+            "status": status,
+            "source": source,
+            "version": manifest.display_version if manifest is not None else "-",
+            "details": details or message,
+            "message": message,
+        }
+        entries.insert(0, entry)
+        HISTORY_PATH.write_text(json.dumps(entries[:300], indent=2, ensure_ascii=True), encoding="utf-8")
+
+    def _load_history_entries(self) -> list[dict[str, str]]:
+        if not HISTORY_PATH.exists():
+            return []
+        try:
+            payload = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            logger.warning("Historique des mises a jour illisible, reinitialisation implicite.")
+            return []
+        if not isinstance(payload, list):
+            return []
+        return [entry for entry in payload if isinstance(entry, dict)]
 
     def _is_remote_newer(self, manifest: UpdateManifest) -> bool:
         remote = self._release_tuple(manifest.version, manifest.patch)
