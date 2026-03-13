@@ -1,0 +1,9 @@
+{
+  "version": "1.1.0",
+  "patch": 1,
+  "published_at": "2026-03-13T10:30:00Z",
+  "installer_name": "PharmaDeskSetup-1.1.0.exe",
+  "installer_url": "https://github.com/SteadEvent7/pharmadesk/releases/download/v1.1.0/PharmaDeskSetup.exe",
+  "sha256": "",
+  "notes": "- Correctifs critiques\n- Amelioration de l'ecran de connexion\n- Optimisations du module de stock"
+}

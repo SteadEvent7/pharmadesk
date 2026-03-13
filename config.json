@@ -1,0 +1,17 @@
+{
+  "db_engine": "sqlite",
+  "sqlite_path": "C:\\Users\\SteadEvent7\\Downloads\\ph\\data\\pharmacy.db",
+  "mysql_host": "127.0.0.1",
+  "mysql_port": 3306,
+  "mysql_user": "root",
+  "mysql_password": "",
+  "mysql_database": "pharmacy_db",
+  "low_stock_threshold": 10,
+  "github_owner": "SteadEvent7",
+  "github_repo": "pharmadesk",
+  "auto_check_updates": false,
+  "update_manifest_url": "https://raw.githubusercontent.com/SteadEvent7/pharmadesk/main/update.json",
+  "update_download_dir": "C:\\Users\\SteadEvent7\\Downloads\\ph\\data\\updates",
+  "update_installer_args": "/CLOSEAPPLICATIONS /NORESTART",
+  "currency_code": "CDF"
+}
