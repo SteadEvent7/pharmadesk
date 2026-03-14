@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import queue
+import ssl
 import subprocess
 import threading
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+import certifi
 
 from app import APP_PATCH, APP_VERSION
 from app.config import CONFIG, DATA_DIR
@@ -71,6 +74,11 @@ class UpdateService:
             return f"https://raw.githubusercontent.com/{owner}/{repo}/main/update.json"
         raise ValueError("Manifest de mise a jour non configure.")
 
+    def _build_ssl_context(self) -> ssl.SSLContext:
+        cafile = certifi.where()
+        logger.info("Bundle SSL utilise pour les mises a jour: %s", cafile)
+        return ssl.create_default_context(cafile=cafile)
+
     def check_for_updates(self, source: str = "manuel") -> UpdateCheckResult:
         manifest_url = ""
         try:
@@ -90,6 +98,15 @@ class UpdateService:
                 )
             else:
                 message = f"Verification des mises a jour impossible (HTTP {error.code})."
+            result = UpdateCheckResult(False, message, error=f"{error} | URL: {manifest_url}")
+            self.record_history("verification", "erreur", message, source=source)
+            return result
+        except ssl.SSLCertVerificationError as error:
+            logger.warning("Erreur SSL pendant la verification: %s", error)
+            message = (
+                "Verification des mises a jour impossible: le certificat SSL du serveur n'a pas pu etre verifie. "
+                "Installez la derniere version complete de PharmaDesk si le probleme persiste sur ce poste."
+            )
             result = UpdateCheckResult(False, message, error=f"{error} | URL: {manifest_url}")
             self.record_history("verification", "erreur", message, source=source)
             return result
@@ -147,7 +164,7 @@ class UpdateService:
             },
         )
 
-        with urlopen(request, timeout=8) as response:
+        with urlopen(request, timeout=8, context=self._build_ssl_context()) as response:
             payload = json.loads(response.read().decode("utf-8"))
 
         version = str(payload.get("version") or "").strip()
@@ -228,7 +245,7 @@ class UpdateService:
         logger.info("Telechargement de l'installateur vers %s", destination)
 
         request = Request(manifest.installer_url, headers={"User-Agent": "PharmaDesk-Updater"})
-        with urlopen(request, timeout=20) as response, temp_destination.open("wb") as output:
+        with urlopen(request, timeout=20, context=self._build_ssl_context()) as response, temp_destination.open("wb") as output:
             total_size = int(response.headers.get("Content-Length") or 0)
             downloaded = 0
             while True:

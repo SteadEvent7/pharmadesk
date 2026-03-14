@@ -1,4 +1,5 @@
 mysql-connector-python>=9.0.0
+certifi>=2026.2.25
 Pillow>=11.1.0
 reportlab>=4.2.5
 tkcalendar>=1.6.1

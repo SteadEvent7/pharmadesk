@@ -2,11 +2,14 @@
 
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_data_files
+
 project_root = Path.cwd()
 assets_dir = project_root / 'assets'
 datas = []
 if assets_dir.exists():
     datas.append((str(assets_dir), 'assets'))
+datas += collect_data_files('certifi')
 icon_path = assets_dir / 'Logo2.ico'
 
 a = Analysis(
