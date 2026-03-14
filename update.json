@@ -1,9 +1,9 @@
 {
   "version": "1.0.0",
-  "patch": 5,
-  "published_at": "2026-03-14T13:54:48.6554918Z",
+  "patch": 6,
+  "published_at": "2026-03-14T14:09:06.2964872Z",
   "installer_name": "PharmaDeskSetup.exe",
   "installer_url": "https://github.com/SteadEvent7/pharmadesk/releases/download/v1.0.0/PharmaDeskSetup.exe",
-  "notes": "- Patch 5: correction du telechargement HTTPS des mises a jour sur certains postes Windows\n- Integration du bundle de certificats SSL dans l'application packagee\n- Message d'erreur de verification SSL clarifie pour les postes necessitant une reinstallation manuelle",
-  "sha256": "e97bd50a1cee378532ceaaf3141154a366abe198b63a5700c7986804acbf94ce"
+  "notes": "- Patch 6: regeneration des artefacts de distribution\n- Synchronisation du manifest de mise a jour avec l'installateur GitHub\n- Package Windows recompile avec les metadonnees patch 6",
+  "sha256": "f971836c97b22213f9e5fad34cc34f0a3bacffd74fe3ef934485f7cc3a06b553"
 }

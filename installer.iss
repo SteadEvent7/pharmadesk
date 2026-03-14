@@ -1,7 +1,7 @@
 [Setup]
 AppId={{2D380CEF-AEAA-4450-8259-9E90F81EA902}
 AppName=PharmaDesk
-AppVersion=1.0.0.5
+AppVersion=1.0.0.6
 AppPublisher=Votre pharmacie
 DefaultDirName={autopf}\PharmaDesk
 DefaultGroupName=PharmaDesk
