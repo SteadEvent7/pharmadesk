@@ -1,9 +1,9 @@
 {
-  "version": "1.1.0",
-  "patch": 1,
-  "published_at": "2026-03-13T10:30:00Z",
-  "installer_name": "PharmaDeskSetup-1.1.0.exe",
-  "installer_url": "https://github.com/SteadEvent7/pharmadesk/releases/download/v1.1.0/PharmaDeskSetup.exe",
+  "version": "1.0.0",
+  "patch": 3,
+  "published_at": "2026-03-14T11:54:36.7066436Z",
+  "installer_name": "PharmaDeskSetup.exe",
+  "installer_url": "https://github.com/SteadEvent7/pharmadesk/releases/download/v1.0.0/PharmaDeskSetup.exe",
   "sha256": "",
-  "notes": "- Correctifs critiques\n- Amelioration de l'ecran de connexion\n- Optimisations du module de stock"
+  "notes": "- Patch 3: integration du logo applicatif et de l'icone Windows\n- Ecrans splash et connexion ajustes avec ouverture maximisee de l'application\n- Renforcement de la gestion des comptes et du changement de mot de passe\n- Ameliorations POS, reimpression et centre d'alertes"
 }

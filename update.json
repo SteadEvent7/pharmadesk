@@ -1,9 +1,9 @@
 {
   "version": "1.0.0",
-  "patch": 2,
-  "published_at": "2026-03-13T21:08:22Z",
+  "patch": 3,
+  "published_at": "2026-03-14T11:54:36.7066436Z",
   "installer_name": "PharmaDeskSetup.exe",
   "installer_url": "https://github.com/SteadEvent7/pharmadesk/releases/download/v1.0.0/PharmaDeskSetup.exe",
-  "notes": "- Patch 2: uniformisation du theme sur l'ensemble de l'application\n- Ajout du theme confort visuel et application immediate des preferences\n- Ajout d'un historique structure des mises a jour dans Parametres",
-  "sha256": "8fe6d913904d214e6a3630beff3defe7a8e16b81c741d63b26d2da42efb1895c"
+  "notes": "- Patch 3: integration du logo applicatif et de l'icone Windows\n- Ecrans splash et connexion ajustes avec ouverture maximisee de l'application\n- Renforcement de la gestion des comptes et du changement de mot de passe\n- Ameliorations POS, reimpression et centre d'alertes",
+  "sha256": "6cbe98db45abd276a5e5fd04c6ad5ab2ba1cb9ed8be46c1a7b8c105a3d814abb"
 }
