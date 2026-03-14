@@ -3,12 +3,17 @@
 from pathlib import Path
 
 project_root = Path.cwd()
+assets_dir = project_root / 'assets'
+datas = []
+if assets_dir.exists():
+    datas.append((str(assets_dir), 'assets'))
+icon_path = assets_dir / 'Logo2.ico'
 
 a = Analysis(
     ['main.py'],
     pathex=[str(project_root)],
     binaries=[],
-    datas=[],
+    datas=datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -24,6 +29,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='PharmaDesk',
+    icon=str(icon_path) if icon_path.exists() else None,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

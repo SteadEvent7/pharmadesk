@@ -21,12 +21,17 @@ class BillingView(ttk.Frame):
         self.end_date_var = tk.StringVar()
         self.use_start_var = tk.BooleanVar(value=False)
         self.use_end_var = tk.BooleanVar(value=False)
+        self.recent_invoice_var = tk.StringVar()
+        self.recent_invoice_map: dict[str, int] = {}
 
         toolbar = ttk.Frame(self, style="Card.TFrame", padding=16)
         toolbar.pack(fill="x")
         ttk.Label(toolbar, text="Archives de facturation", style="Section.TLabel").pack(side="left")
+        self.recent_invoice_combo = ttk.Combobox(toolbar, textvariable=self.recent_invoice_var, state="readonly", width=40)
+        self.recent_invoice_combo.pack(side="right", padx=(8, 0))
         actions = ttk.Frame(toolbar, style="Card.TFrame")
         actions.pack(side="right")
+        ttk.Button(actions, text="Reimprimer recente", style="Secondary.TButton", command=self.print_recent).pack(side="right", padx=(8, 0))
         ttk.Button(actions, text="Imprimer", style="Secondary.TButton", command=self.print_selected).pack(side="right", padx=(8, 0))
         ttk.Button(actions, text="Exporter PDF", style="Secondary.TButton", command=self.export_pdf).pack(side="right", padx=(8, 0))
         ttk.Button(actions, text="Exporter texte", style="Secondary.TButton", command=self.export_selected).pack(side="right", padx=(8, 0))
@@ -120,6 +125,18 @@ class BillingView(ttk.Frame):
         self.items_table.clear()
         self._set_preview("")
         self.selected_sale_id = None
+        self._refresh_recent_invoices()
+
+    def _refresh_recent_invoices(self) -> None:
+        recent_invoices = pharmacy_service.get_recent_invoices()
+        values: list[str] = []
+        self.recent_invoice_map.clear()
+        for invoice in recent_invoices:
+            label = f"{invoice['sale_number']}  |  {invoice['sale_date'][:16]}  |  {format_currency(float(invoice['total_amount']))}"
+            values.append(label)
+            self.recent_invoice_map[label] = int(invoice["id"])
+        self.recent_invoice_combo.configure(values=values)
+        self.recent_invoice_var.set(values[0] if values else "")
 
     def _on_invoice_selected(self, _event=None) -> None:
         selection = self.invoice_table.tree.selection()
@@ -204,6 +221,15 @@ class BillingView(ttk.Frame):
             return
         printed = pharmacy_service.print_invoice(self.selected_sale_id)
         pharmacy_service.record_audit(self.current_user.id, "imprimer", "facture", f"Impression facture {self.selected_sale_id} via {printed}", self.selected_sale_id)
+        messagebox.showinfo("Facturation", f"Impression envoyee via: {printed}")
+
+    def print_recent(self) -> None:
+        sale_id = self.recent_invoice_map.get(self.recent_invoice_var.get())
+        if not sale_id:
+            messagebox.showwarning("Facturation", "Aucune facture recente disponible.")
+            return
+        printed = pharmacy_service.print_invoice(sale_id)
+        pharmacy_service.record_audit(self.current_user.id, "imprimer", "facture", f"Reimpression rapide facture {sale_id} via {printed}", sale_id)
         messagebox.showinfo("Facturation", f"Impression envoyee via: {printed}")
 
     def reset_search(self) -> None:

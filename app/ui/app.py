@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import queue
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -8,9 +10,12 @@ from app.config import CONFIG
 from app.db.schema import initialize_database
 from app.services.auth_service import AuthenticatedUser
 from app.services.update_service import UpdateCheckResult, update_service
+from app.services.pharmacy_service import pharmacy_service
+from app.ui.branding import load_brand_logo
 from app.ui.theme import COLORS, apply_theme
 from app.ui.views.billing_view import BillingView
 from app.ui.views.dashboard_view import DashboardView
+from app.ui.views.force_password_change_view import ForcePasswordChangeView
 from app.ui.views.login_view import LoginView
 from app.ui.views.medicines_view import MedicinesView
 from app.ui.views.reports_view import ReportsView
@@ -26,29 +31,37 @@ class PharmacyApp:
     def __init__(self) -> None:
         self.root = tk.Tk()
         self.root.title(f"{APP_NAME} - Initialisation")
-        self.root.geometry("1280x720")
-        self.root.minsize(1100, 680)
+        self._set_window_geometry(1024, 576, resizable=False)
         self.current_user: AuthenticatedUser | None = None
         self.container = ttk.Frame(self.root)
         self.container.pack(fill="both", expand=True)
         self.nav_buttons: dict[str, tk.Button] = {}
         self.views: dict[str, ttk.Frame] = {}
         self.current_view_key: str | None = None
+        self.alert_count_var = tk.StringVar(value="0")
+        self.topbar_logo_image = None
         self._startup_update_check_scheduled = False
+        self._startup_queue: queue.Queue[tuple[str, int, float, str, str, str]] = queue.Queue()
+        self._startup_current_index = 0
         self.show_splash()
 
     def show_splash(self) -> None:
+        self.root.overrideredirect(True)
+        self._set_window_geometry(1024, 576, resizable=False)
         self._clear_container()
         self.splash_view = SplashView(self.container)
         self.splash_view.pack(fill="both", expand=True)
         self.startup_steps = [
-            (14, "Initialisation en cours", "Chargement des composants du poste", "Astuce: les droits d'acces dependent du role connecte.", self._startup_noop),
-            (36, "Progression du demarrage", "Initialisation de la base de donnees", "Astuce: pensez a sauvegarder avant toute restauration.", initialize_database),
-            (57, "Progression du demarrage", "Recherche des mises a jour", "Astuce: exportez vos rapports en PDF et Excel pour l'audit.", self._startup_noop),
-            (76, "Progression du demarrage", "Configuration de l'interface", "Astuce: choisissez la devise depuis Parametres.", self._apply_runtime_theme),
-            (92, "Progression du demarrage", "Securisation du poste et des modules", "Astuce: les mouvements de stock sont journalises automatiquement.", self._startup_noop),
-            (100, "Demarrage termine", "Ouverture de l'ecran de connexion", "", self._finish_startup),
+            (6, 14, "Initialisation en cours", "Chargement des composants du poste", "Astuce: les droits d'acces dependent du role connecte.", self._startup_noop, False, False),
+            (14, 62, "Progression du demarrage", "Initialisation de la base de donnees", "Astuce: pensez a sauvegarder avant toute restauration.", initialize_database, True, True),
+            (62, 74, "Progression du demarrage", "Preparation des services de mise a jour", "Astuce: exportez vos rapports en PDF et Excel pour l'audit.", self._startup_noop, False, False),
+            (74, 86, "Progression du demarrage", "Configuration de l'interface", "Astuce: choisissez la devise depuis Parametres.", self._apply_runtime_theme, False, False),
+            (86, 96, "Progression du demarrage", "Securisation du poste et des modules", "Astuce: les mouvements de stock sont journalises automatiquement.", self._startup_noop, False, False),
+            (96, 100, "Demarrage termine", "Ouverture de l'ecran de connexion", "", self._finish_startup, False, False),
         ]
+        self._startup_current_index = 0
+        self.splash_view.update_progress(4, "Initialisation en cours", "Preparation du poste", "Chargement des ressources de base...")
+        self.root.after(80, self._poll_startup_queue)
         self.root.after(120, lambda: self._run_startup_step(0))
 
     def _startup_noop(self) -> None:
@@ -58,26 +71,128 @@ class PharmacyApp:
         apply_theme(self.root)
 
     def _finish_startup(self) -> None:
+        self.root.overrideredirect(False)
         self.root.title(f"{APP_NAME} {APP_VERSION}")
-        self.root.geometry("1400x860")
-        self.root.minsize(1180, 760)
+        self._set_window_geometry(1400, 860, min_width=1180, min_height=760, resizable=True)
+        try:
+            self.root.state("zoomed")
+        except tk.TclError:
+            pass
         self.show_login()
+
+    def _set_window_geometry(
+        self,
+        width: int,
+        height: int,
+        min_width: int | None = None,
+        min_height: int | None = None,
+        resizable: bool = True,
+    ) -> None:
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = max((screen_width - width) // 2, 40)
+        y = max((screen_height - height) // 2, 40)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        if min_width is None:
+            min_width = width
+        if min_height is None:
+            min_height = height
+        self.root.minsize(min_width, min_height)
+        self.root.resizable(resizable, resizable)
 
     def _run_startup_step(self, index: int) -> None:
         if index >= len(self.startup_steps):
             return
-        percent, status, step, tip, callback = self.startup_steps[index]
-        self.splash_view.update_progress(percent, status, step, tip)
-        callback()
-        self.root.after(260 if index < len(self.startup_steps) - 1 else 120, lambda: self._run_startup_step(index + 1))
+        self._startup_current_index = index
+        start_percent, end_percent, status, step, tip, callback, threaded, supports_progress = self.startup_steps[index]
+        self.splash_view.update_progress(start_percent, status, step, tip)
+
+        if threaded:
+            self._run_threaded_startup_step(index, start_percent, end_percent, status, step, tip, callback, supports_progress)
+            return
+
+        try:
+            callback()
+        except Exception as error:
+            self._handle_startup_error(step, error)
+            return
+
+        self.splash_view.update_progress(end_percent, status, step, tip)
+        self.root.after(40, lambda: self._run_startup_step(index + 1))
+
+    def _run_threaded_startup_step(self, index: int, start_percent: int, end_percent: int, status: str, step: str, tip: str, callback, supports_progress: bool) -> None:
+        def progress_callback(progress: float) -> None:
+            bounded = max(0.0, min(1.0, progress))
+            current_percent = start_percent + ((end_percent - start_percent) * bounded)
+            self._startup_queue.put(("progress", index, current_percent, status, step, tip))
+
+        def worker() -> None:
+            try:
+                if supports_progress:
+                    callback(progress_callback=progress_callback)
+                else:
+                    callback()
+            except Exception as error:
+                self._startup_queue.put(("error", index, 0, status, step, str(error)))
+                return
+            self._startup_queue.put(("complete", index, float(end_percent), status, step, tip))
+
+        threading.Thread(target=worker, daemon=True, name=f"startup-step-{index}").start()
+
+    def _poll_startup_queue(self) -> None:
+        if not hasattr(self, "splash_view") or not self.splash_view.winfo_exists():
+            return
+        while True:
+            try:
+                event_type, step_index, percent, status, step, payload = self._startup_queue.get_nowait()
+            except queue.Empty:
+                break
+
+            if step_index != self._startup_current_index:
+                continue
+
+            if event_type == "progress":
+                self.splash_view.update_progress(int(percent), status, step, payload)
+            elif event_type == "complete":
+                self.splash_view.update_progress(int(percent), status, step, payload)
+                self.root.after(40, lambda next_index=step_index + 1: self._run_startup_step(next_index))
+            elif event_type == "error":
+                self._handle_startup_error(step, RuntimeError(payload))
+
+        if self.container.winfo_exists() and hasattr(self, "splash_view") and self.splash_view.winfo_exists():
+            self.root.after(80, self._poll_startup_queue)
+
+    def _handle_startup_error(self, step: str, error: Exception) -> None:
+        messagebox.showerror("Demarrage", f"Erreur pendant l'etape '{step}': {error}")
 
     def show_login(self) -> None:
         self._startup_update_check_scheduled = False
+        self.current_user = None
         self._clear_container()
         login_view = LoginView(self.container, self.on_login_success)
         login_view.pack(fill="both", expand=True)
 
     def on_login_success(self, user: AuthenticatedUser) -> None:
+        self.current_user = user
+        if user.requires_password_change:
+            self.show_force_password_change()
+            return
+        self.show_main_shell()
+
+    def show_force_password_change(self) -> None:
+        self._clear_container()
+        if not self.current_user:
+            self.show_login()
+            return
+        force_view = ForcePasswordChangeView(
+            self.container,
+            self.current_user,
+            on_success=self._on_forced_password_changed,
+            on_cancel=self.show_login,
+        )
+        force_view.pack(fill="both", expand=True)
+
+    def _on_forced_password_changed(self, user: AuthenticatedUser) -> None:
         self.current_user = user
         self.show_main_shell()
 
@@ -109,10 +224,38 @@ class PharmacyApp:
 
         left = tk.Frame(topbar, bg=COLORS["shell_topbar"])
         left.pack(side="left", fill="y")
+        self.topbar_logo_image = load_brand_logo((110, 34))
+        if self.topbar_logo_image is not None:
+            tk.Label(left, image=self.topbar_logo_image, bg=COLORS["shell_topbar"]).pack(side="left", padx=(14, 8))
         tk.Label(left, text="   PharmaDesk  •  Point de Vente", bg=COLORS["shell_topbar"], fg=COLORS["shell_sidebar_text"], font=("Segoe UI Semibold", 13)).pack(side="left", padx=14)
 
         right = tk.Frame(topbar, bg=COLORS["shell_topbar"])
         right.pack(side="right", fill="y", padx=12)
+        alert_wrap = tk.Frame(right, bg=COLORS["shell_topbar"])
+        alert_wrap.pack(side="left", padx=(0, 14))
+        tk.Button(
+            alert_wrap,
+            text="🔔",
+            command=self.show_alert_center,
+            bg=COLORS["shell_topbar"],
+            fg=COLORS["shell_sidebar_text"],
+            activebackground=COLORS["shell_topbar"],
+            activeforeground=COLORS["shell_sidebar_text"],
+            relief="flat",
+            borderwidth=0,
+            padx=6,
+            pady=4,
+            font=("Segoe UI Symbol", 14),
+        ).pack(side="left")
+        tk.Label(
+            alert_wrap,
+            textvariable=self.alert_count_var,
+            bg=COLORS["danger"],
+            fg="#ffffff",
+            font=("Segoe UI Semibold", 8),
+            padx=6,
+            pady=2,
+        ).pack(side="left", padx=(0, 2))
         tk.Label(
             right,
             text=f"{self.current_user.full_name}  |  {self.current_user.role.title()}",
@@ -133,6 +276,7 @@ class PharmacyApp:
             pady=6,
             font=("Segoe UI Semibold", 9),
         ).pack(side="left")
+        self._refresh_alert_badge()
 
     def _build_sidebar(self, parent: ttk.Frame) -> None:
         self.sidebar = tk.Frame(parent, bg=COLORS["shell_sidebar"], width=230)
@@ -306,6 +450,59 @@ class PharmacyApp:
             self.users_view.refresh()
         if self.reports_view is not None:
             self.reports_view.refresh()
+        self._refresh_alert_badge()
+
+    def _refresh_alert_badge(self) -> None:
+        notifications = pharmacy_service.get_alert_notifications()
+        self.alert_count_var.set(str(len(notifications)))
+
+    def show_alert_center(self) -> None:
+        notifications = pharmacy_service.get_alert_notifications()
+        self._refresh_alert_badge()
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Centre d'alertes")
+        dialog.geometry("720x460")
+        dialog.configure(bg=COLORS["bg"])
+        dialog.transient(self.root)
+
+        frame = ttk.Frame(dialog, padding=16, style="Card.TFrame")
+        frame.pack(fill="both", expand=True)
+        ttk.Label(frame, text="Alertes produit", style="Section.TLabel").pack(anchor="w")
+        ttk.Label(frame, text="Expiration, produits expires et seuils de stock faibles.", style="Subtitle.TLabel").pack(anchor="w", pady=(4, 12))
+
+        columns = ["label", "medicine", "stock", "expiration", "severity"]
+        headings = ["Alerte", "Produit", "Stock", "Expiration", "Niveau"]
+        tree = ttk.Treeview(frame, columns=columns, show="headings", height=12)
+        for column, heading, width, anchor in (
+            ("label", "Alerte", 170, "w"),
+            ("medicine", "Produit", 220, "w"),
+            ("stock", "Stock", 80, "center"),
+            ("expiration", "Expiration", 120, "center"),
+            ("severity", "Niveau", 100, "center"),
+        ):
+            tree.heading(column, text=heading)
+            tree.column(column, width=width, anchor=anchor)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        for item in notifications:
+            tree.insert(
+                "",
+                "end",
+                values=(
+                    item["label"],
+                    item["medicine_name"],
+                    item["quantity"],
+                    item["expiration_date"],
+                    item["severity"].title(),
+                ),
+            )
+
+        if not notifications:
+            tree.insert("", "end", values=("Aucune alerte", "-", "-", "-", "Normal"))
 
     def apply_user_preferences(self) -> None:
         active_view = self.current_view_key or "dashboard"

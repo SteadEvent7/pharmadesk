@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from app.config import CONFIG
 from app.db.connection import db
 
 
@@ -14,6 +15,7 @@ SQLITE_SCHEMA = [
         password TEXT NOT NULL,
         role TEXT NOT NULL,
         is_active INTEGER NOT NULL DEFAULT 1,
+        must_change_password INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
     )
     """,
@@ -115,31 +117,99 @@ MYSQL_SCHEMA = [
 ]
 
 
-def initialize_database() -> None:
+def initialize_database(progress_callback=None) -> None:
     schema = MYSQL_SCHEMA if db.engine == "mysql" else SQLITE_SCHEMA
-    for statement in schema:
+    total_steps = len(schema) + 4
+    for index, statement in enumerate(schema, start=1):
         db.execute(statement)
+        if callable(progress_callback):
+            progress_callback(index / total_steps)
+    ensure_users_schema()
+    if callable(progress_callback):
+        progress_callback((len(schema) + 1) / total_steps)
+    ensure_sales_schema()
+    if callable(progress_callback):
+        progress_callback((len(schema) + 2) / total_steps)
     seed_default_admin()
+    if callable(progress_callback):
+        progress_callback((len(schema) + 3) / total_steps)
+    clear_non_admin_password_change_flags()
+    if callable(progress_callback):
+        progress_callback(1.0)
+
+
+def _get_table_columns(table_name: str) -> set[str]:
+    if db.engine == "mysql":
+        columns = db.fetch_all(
+            """
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+            """,
+            (CONFIG.mysql_database, table_name),
+        )
+        return {column["COLUMN_NAME"] for column in columns}
+
+    columns = db.fetch_all(f"PRAGMA table_info({table_name})")
+    return {column["name"] for column in columns}
+
+
+def ensure_users_schema() -> None:
+    column_names = _get_table_columns("users")
+
+    if "must_change_password" not in column_names:
+        db.execute("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0")
+
+
+def ensure_sales_schema() -> None:
+    column_names = _get_table_columns("sales")
+
+    if "subtotal_amount" not in column_names:
+        db.execute("ALTER TABLE sales ADD COLUMN subtotal_amount REAL NOT NULL DEFAULT 0")
+    if "tax_amount" not in column_names:
+        db.execute("ALTER TABLE sales ADD COLUMN tax_amount REAL NOT NULL DEFAULT 0")
+    if "received_amount" not in column_names:
+        db.execute("ALTER TABLE sales ADD COLUMN received_amount REAL")
+    if "change_amount" not in column_names:
+        db.execute("ALTER TABLE sales ADD COLUMN change_amount REAL NOT NULL DEFAULT 0")
+
+    db.execute("UPDATE sales SET subtotal_amount = total_amount WHERE subtotal_amount = 0 AND total_amount <> 0")
+    db.execute("UPDATE sales SET tax_amount = 0 WHERE tax_amount IS NULL")
+    db.execute("UPDATE sales SET change_amount = 0 WHERE change_amount IS NULL")
 
 
 def seed_default_admin() -> None:
-    from app.services.auth_service import hash_password
+    from app.services.auth_service import DEFAULT_DELIVERED_PASSWORD, DEFAULT_DELIVERED_USERNAME, hash_password
 
-    existing = db.fetch_one("SELECT id FROM users WHERE username = ?", ("admin",))
+    existing = db.fetch_one("SELECT id FROM users WHERE username = ?", (DEFAULT_DELIVERED_USERNAME,))
     if existing:
+        db.execute(
+            "UPDATE users SET must_change_password = 1 WHERE username = ? AND password = ?",
+            (DEFAULT_DELIVERED_USERNAME, hash_password(DEFAULT_DELIVERED_PASSWORD)),
+        )
         return
 
     db.execute(
         """
-        INSERT INTO users (full_name, username, password, role, is_active, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO users (full_name, username, password, role, is_active, must_change_password, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "Administrateur",
-            "admin",
-            hash_password("admin123"),
+            DEFAULT_DELIVERED_USERNAME,
+            hash_password(DEFAULT_DELIVERED_PASSWORD),
             "administrateur",
+            1,
             1,
             date.today().isoformat(),
         ),
+    )
+
+
+def clear_non_admin_password_change_flags() -> None:
+    from app.services.auth_service import DEFAULT_DELIVERED_USERNAME
+
+    db.execute(
+        "UPDATE users SET must_change_password = 0 WHERE username <> ? AND must_change_password <> 0",
+        (DEFAULT_DELIVERED_USERNAME,),
     )

@@ -14,6 +14,9 @@ from app.utils.currency import format_currency
 
 
 class PharmacyService:
+    DEFAULT_TAX_RATE = 0.0
+    EXPIRING_SOON_DAYS = 30
+
     def record_audit(
         self,
         user_id: int | None,
@@ -181,6 +184,27 @@ class PharmacyService:
             "SELECT id, full_name, username, role, is_active, created_at FROM users ORDER BY full_name"
         )
 
+    def verify_user_password(self, user_id: int, password: str, actor_user_id: int | None = None) -> bool:
+        from app.services.auth_service import hash_password
+
+        user = db.fetch_one("SELECT username FROM users WHERE id = ?", (user_id,))
+        if not user:
+            raise ValueError("Utilisateur introuvable")
+
+        matched = db.fetch_one(
+            "SELECT id FROM users WHERE id = ? AND password = ?",
+            (user_id, hash_password(password)),
+        ) is not None
+        outcome = "succes" if matched else "echec"
+        self.record_audit(
+            actor_user_id,
+            "verifier_mot_de_passe",
+            "utilisateur",
+            f"Verification de mot de passe {outcome} pour {user['username']}",
+            user_id,
+        )
+        return matched
+
     def save_user(self, user_id: int | None, data: dict[str, Any], actor_user_id: int | None = None) -> None:
         from app.services.auth_service import hash_password
 
@@ -267,16 +291,80 @@ class PharmacyService:
         ]
         return {"low_stock": low_stock, "expired": expired, "expiring_soon": expiring_soon}
 
-    def create_sale(self, sale_number: str, payment_method: str, seller_id: int, items: list[dict[str, Any]]) -> int:
-        total_amount = sum(float(item["line_total"]) for item in items)
+    def get_alert_notifications(self) -> list[dict[str, Any]]:
+        alerts = self.get_stock_alerts()
+        notifications: list[dict[str, Any]] = []
+        seen: set[tuple[int, str]] = set()
+
+        for category, label, severity in (
+            ("expired", "Produit expire", "critique"),
+            ("expiring_soon", "Expiration proche", "attention"),
+            ("low_stock", "Stock faible", "attention"),
+        ):
+            for item in alerts[category]:
+                key = (int(item["id"]), category)
+                if key in seen:
+                    continue
+                seen.add(key)
+                notifications.append(
+                    {
+                        "medicine_id": int(item["id"]),
+                        "medicine_name": item["name"],
+                        "category": category,
+                        "label": label,
+                        "severity": severity,
+                        "quantity": int(item["quantity"]),
+                        "expiration_date": item["expiration_date"],
+                    }
+                )
+        return notifications
+
+    def calculate_sale_totals(self, items: list[dict[str, Any]], tax_rate: float = DEFAULT_TAX_RATE) -> dict[str, float]:
+        subtotal = round(sum(float(item["line_total"]) for item in items), 2)
+        tax_amount = round(subtotal * tax_rate, 2)
+        total = round(subtotal + tax_amount, 2)
+        return {"subtotal": subtotal, "tax_amount": tax_amount, "total": total}
+
+    def get_recent_invoices(self, limit: int = 8) -> list[dict[str, Any]]:
+        return db.fetch_all(
+            """
+            SELECT sales.id, sales.sale_number, sales.sale_date, sales.total_amount,
+                   users.full_name AS seller_name
+            FROM sales
+            LEFT JOIN users ON users.id = sales.seller_id
+            ORDER BY sales.sale_date DESC
+            LIMIT ?
+            """,
+            (limit,),
+        )
+
+    def create_sale(
+        self,
+        sale_number: str,
+        payment_method: str,
+        seller_id: int,
+        items: list[dict[str, Any]],
+        received_amount: float | None = None,
+        tax_rate: float = DEFAULT_TAX_RATE,
+    ) -> int:
+        totals = self.calculate_sale_totals(items, tax_rate)
+        subtotal_amount = totals["subtotal"]
+        tax_amount = totals["tax_amount"]
+        total_amount = totals["total"]
+        if received_amount is None:
+            received_amount = total_amount
+        change_amount = round(max(received_amount - total_amount, 0.0), 2)
         with db.get_connection() as connection:
             cursor = connection.cursor()
             placeholder = db._prepare_query
             cursor.execute(
                 placeholder(
                     """
-                INSERT INTO sales (sale_number, sale_date, payment_method, total_amount, seller_id)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO sales (
+                    sale_number, sale_date, payment_method, total_amount,
+                    subtotal_amount, tax_amount, received_amount, change_amount, seller_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 ),
                 (
@@ -284,6 +372,10 @@ class PharmacyService:
                     datetime.now().isoformat(timespec="seconds"),
                     payment_method,
                     total_amount,
+                    subtotal_amount,
+                    tax_amount,
+                    received_amount,
+                    change_amount,
                     seller_id,
                 ),
             )
@@ -327,8 +419,22 @@ class PharmacyService:
             self.record_audit(seller_id, "vente", "facture", f"Vente {sale_number} enregistree, montant={format_currency(total_amount)}", sale_id)
             return int(sale_id)
 
-    def build_invoice(self, sale_number: str, cashier_name: str, payment_method: str, items: list[dict[str, Any]]) -> str:
-        total = sum(float(item["line_total"]) for item in items)
+    def build_invoice(
+        self,
+        sale_number: str,
+        cashier_name: str,
+        payment_method: str,
+        items: list[dict[str, Any]],
+        received_amount: float | None = None,
+        tax_rate: float = DEFAULT_TAX_RATE,
+    ) -> str:
+        totals = self.calculate_sale_totals(items, tax_rate)
+        subtotal = totals["subtotal"]
+        tax_amount = totals["tax_amount"]
+        total = totals["total"]
+        if received_amount is None:
+            received_amount = total
+        change_amount = max(received_amount - total, 0.0)
         lines = [
             "PHARMADESK",
             f"Facture: {sale_number}",
@@ -341,7 +447,17 @@ class PharmacyService:
             lines.append(
                 f"{item['name']} x{item['quantity']} @ {format_currency(float(item['unit_price']))} = {format_currency(float(item['line_total']))}"
             )
-        lines.extend(["-" * 42, f"TOTAL: {format_currency(total)}", "Merci pour votre visite."])
+        lines.extend(
+            [
+                "-" * 42,
+                f"Total HT: {format_currency(subtotal)}",
+                f"Taxe: {format_currency(tax_amount)}",
+                f"Total final: {format_currency(total)}",
+                f"Montant encaisse: {format_currency(received_amount)}",
+                f"Monnaie rendue: {format_currency(change_amount)}",
+                "Merci pour votre visite.",
+            ]
+        )
         return "\n".join(lines)
 
     def get_dashboard_metrics(self) -> dict[str, Any]:
@@ -417,6 +533,7 @@ class PharmacyService:
         base_query = (
             """
             SELECT sales.id, sales.sale_number, sales.sale_date, sales.payment_method, sales.total_amount,
+                   sales.subtotal_amount, sales.tax_amount, sales.received_amount, sales.change_amount,
                    users.full_name AS seller_name
             FROM sales
             LEFT JOIN users ON users.id = sales.seller_id
@@ -456,7 +573,8 @@ class PharmacyService:
     def build_invoice_from_sale(self, sale_id: int) -> str:
         invoice = db.fetch_one(
             """
-            SELECT sales.sale_number, sales.sale_date, sales.payment_method, sales.total_amount,
+             SELECT sales.sale_number, sales.sale_date, sales.payment_method, sales.total_amount,
+                 sales.subtotal_amount, sales.tax_amount, sales.received_amount, sales.change_amount,
                    users.full_name AS seller_name
             FROM sales
             LEFT JOIN users ON users.id = sales.seller_id
@@ -479,7 +597,18 @@ class PharmacyService:
             lines.append(
                 f"{item['medicine_name']} x{item['quantity']} @ {format_currency(float(item['unit_price']))} = {format_currency(float(item['line_total']))}"
             )
-        lines.extend(["-" * 42, f"TOTAL: {format_currency(float(invoice['total_amount']))}", "Merci pour votre visite."])
+        received_amount = float(invoice["received_amount"]) if invoice.get("received_amount") is not None else float(invoice["total_amount"])
+        lines.extend(
+            [
+                "-" * 42,
+                f"Total HT: {format_currency(float(invoice.get('subtotal_amount') or invoice['total_amount']))}",
+                f"Taxe: {format_currency(float(invoice.get('tax_amount') or 0))}",
+                f"Total final: {format_currency(float(invoice['total_amount']))}",
+                f"Montant encaisse: {format_currency(received_amount)}",
+                f"Monnaie rendue: {format_currency(float(invoice.get('change_amount') or 0))}",
+                "Merci pour votre visite.",
+            ]
+        )
         return "\n".join(lines)
 
     def export_invoices_csv(self, destination: str, query: str = "", start_date: str = "", end_date: str = "") -> Path:
@@ -544,7 +673,8 @@ class PharmacyService:
 
         invoice = db.fetch_one(
             """
-            SELECT sales.sale_number, sales.sale_date, sales.payment_method, sales.total_amount,
+             SELECT sales.sale_number, sales.sale_date, sales.payment_method, sales.total_amount,
+                 sales.subtotal_amount, sales.tax_amount, sales.received_amount, sales.change_amount,
                    users.full_name AS seller_name
             FROM sales
             LEFT JOIN users ON users.id = sales.seller_id
@@ -600,10 +730,19 @@ class PharmacyService:
         y -= 8
         pdf.line(x, y, width - 50, y)
         y -= 22
-        pdf.setFont("Helvetica-Bold", 12)
-        total_text = f"TOTAL: {format_currency(float(invoice['total_amount']))}"
-        total_width = stringWidth(total_text, "Helvetica-Bold", 12)
-        pdf.drawString(width - 50 - total_width, y, total_text)
+        pdf.setFont("Helvetica", 11)
+        received_amount = float(invoice["received_amount"]) if invoice.get("received_amount") is not None else float(invoice["total_amount"])
+        summary_lines = [
+            f"Total HT: {format_currency(float(invoice.get('subtotal_amount') or invoice['total_amount']))}",
+            f"Taxe: {format_currency(float(invoice.get('tax_amount') or 0))}",
+            f"Total final: {format_currency(float(invoice['total_amount']))}",
+            f"Montant encaisse: {format_currency(received_amount)}",
+            f"Monnaie rendue: {format_currency(float(invoice.get('change_amount') or 0))}",
+        ]
+        for line in summary_lines:
+            text_width = stringWidth(line, "Helvetica", 11)
+            pdf.drawString(width - 50 - text_width, y, line)
+            y -= 16
         pdf.save()
         return output
 
@@ -616,7 +755,7 @@ class PharmacyService:
     def get_recent_sales(self) -> list[dict[str, Any]]:
         return db.fetch_all(
             """
-            SELECT sales.sale_number, sales.sale_date, sales.payment_method, sales.total_amount, users.full_name AS seller_name
+            SELECT sales.id, sales.sale_number, sales.sale_date, sales.payment_method, sales.total_amount, users.full_name AS seller_name
             FROM sales
             LEFT JOIN users ON users.id = sales.seller_id
             ORDER BY sales.sale_date DESC

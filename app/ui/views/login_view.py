@@ -4,7 +4,9 @@ import math
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from app import APP_NAME
 from app.services.auth_service import auth_service
+from app.ui.branding import load_brand_logo
 from app.ui.theme import current_colors, mix_colors, shift_color
 
 
@@ -22,16 +24,25 @@ class LoginView(ttk.Frame):
         self._art_highlight_item: int | None = None
         self._art_highlight_bounds: tuple[float, float, float, float] | None = None
         self._last_size = (0, 0)
-        self._card_size = (820, 500)
+        self._card_size = (780, 450)
         self._intro_progress = 0.0
         self._ambient_phase = 0.0
         self._intro_job: str | None = None
         self._ambient_job: str | None = None
+        self.logo_image = load_brand_logo((210, 90))
 
-        self.background = tk.Canvas(self, highlightthickness=0, bd=0)
+        colors = current_colors()
+        self.background = tk.Canvas(self, highlightthickness=0, bd=0, bg=colors["bg"])
         self.background.pack(fill="both", expand=True)
 
-        self.card = tk.Frame(self.background, bg="#f8fafc", bd=0, highlightthickness=0)
+        self.card = tk.Frame(
+            self.background,
+            bg=colors["panel"],
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=colors["border"],
+            highlightcolor=colors["border"],
+        )
         self.card_window = self.background.create_window(0, 0, window=self.card, anchor="center")
         self._build_card()
 
@@ -44,45 +55,52 @@ class LoginView(ttk.Frame):
 
     def _build_card(self) -> None:
         colors = current_colors()
-        self.card.grid_columnconfigure(0, weight=11, minsize=350)
-        self.card.grid_columnconfigure(1, weight=9, minsize=380)
+        self.card.grid_columnconfigure(0, weight=10, minsize=320)
+        self.card.grid_columnconfigure(1, weight=10, minsize=330)
         self.card.grid_rowconfigure(0, weight=1)
 
         self.card.configure(bg=colors["panel"])
 
         self.art_panel = tk.Canvas(
             self.card,
-            width=380,
-            height=460,
-            bg=shift_color(colors["shell_sidebar"], -26),
+            width=340,
+            height=430,
+            bg=mix_colors(colors["shell_sidebar"], colors["primary_dark"], 0.28),
             highlightthickness=0,
             bd=0,
         )
         self.art_panel.grid(row=0, column=0, sticky="nsew")
 
-        form_panel = tk.Frame(self.card, bg=colors["panel"], padx=42, pady=38)
+        form_panel = tk.Frame(self.card, bg=colors["panel"], padx=30, pady=28)
         form_panel.grid(row=0, column=1, sticky="nsew")
         form_panel.grid_columnconfigure(0, weight=1)
 
-        badge = tk.Label(
-            form_panel,
-            text="PharmaDesk",
-            bg=colors["panel_alt"],
-            fg=colors["primary_dark"],
-            font=("Segoe UI Semibold", 10),
-            padx=12,
-            pady=6,
-        )
-        badge.grid(row=0, column=0, sticky="w")
+        current_row = 0
+        if self.logo_image is not None:
+            tk.Label(form_panel, image=self.logo_image, bg=colors["panel"]).grid(row=current_row, column=0, sticky="w", pady=(0, 10))
+            current_row += 1
+        else:
+            badge = tk.Label(
+                form_panel,
+                text=APP_NAME,
+                bg=mix_colors(colors["panel_alt"], colors["bg"], 0.15),
+                fg=colors["primary_dark"],
+                font=("Segoe UI Semibold", 10),
+                padx=12,
+                pady=6,
+            )
+            badge.grid(row=current_row, column=0, sticky="w")
+            current_row += 1
 
         title = tk.Label(
             form_panel,
             text="Connexion",
             bg=colors["panel"],
             fg=colors["text"],
-            font=("Segoe UI Semibold", 27),
+            font=("Segoe UI Semibold", 23),
         )
-        title.grid(row=1, column=0, sticky="w", pady=(28, 6))
+        title.grid(row=current_row, column=0, sticky="w", pady=(12, 4))
+        current_row += 1
 
         subtitle = tk.Label(
             form_panel,
@@ -90,16 +108,18 @@ class LoginView(ttk.Frame):
             bg=colors["panel"],
             fg=colors["muted"],
             justify="left",
-            font=("Segoe UI", 10),
+            font=("Segoe UI", 9),
         )
-        subtitle.grid(row=2, column=0, sticky="w", pady=(0, 22))
+        subtitle.grid(row=current_row, column=0, sticky="w", pady=(0, 14))
+        current_row += 1
 
         username_block, self.username_entry = self._build_input(
             form_panel,
             "Nom d'utilisateur",
             self.username_var,
         )
-        username_block.grid(row=3, column=0, sticky="ew", pady=(0, 12))
+        username_block.grid(row=current_row, column=0, sticky="ew", pady=(0, 10))
+        current_row += 1
 
         password_block, self.password_entry = self._build_input(
             form_panel,
@@ -107,7 +127,8 @@ class LoginView(ttk.Frame):
             self.password_var,
             show="*",
         )
-        password_block.grid(row=4, column=0, sticky="ew", pady=(0, 18))
+        password_block.grid(row=current_row, column=0, sticky="ew", pady=(0, 12))
+        current_row += 1
 
         login_button = tk.Button(
             form_panel,
@@ -124,27 +145,38 @@ class LoginView(ttk.Frame):
             pady=10,
             cursor="hand2",
         )
-        login_button.grid(row=5, column=0, sticky="ew")
+        login_button.grid(row=current_row, column=0, sticky="ew")
+        current_row += 1
+
+        helper_card = tk.Frame(
+            form_panel,
+            bg=mix_colors(colors["panel_alt"], colors["bg"], 0.22),
+            highlightthickness=1,
+            highlightbackground=colors["border"],
+            padx=12,
+            pady=8,
+        )
+        helper_card.grid(row=current_row, column=0, sticky="ew", pady=(12, 0))
 
         helper = tk.Label(
-            form_panel,
+            helper_card,
             text="Compte initial: admin / admin123",
-            bg=colors["panel"],
+            bg=mix_colors(colors["panel_alt"], colors["bg"], 0.22),
             fg=colors["muted"],
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 8),
         )
-        helper.grid(row=6, column=0, sticky="w", pady=(18, 10))
+        helper.pack(anchor="w")
 
         security_note = tk.Label(
-            form_panel,
+            helper_card,
             text="Roles geres: administrateur, pharmacien, caissier",
-            bg=colors["panel"],
+            bg=mix_colors(colors["panel_alt"], colors["bg"], 0.22),
             fg=mix_colors(colors["muted"], colors["panel"], 0.15),
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 8),
         )
-        security_note.grid(row=7, column=0, sticky="w")
+        security_note.pack(anchor="w", pady=(4, 0))
 
-        self._draw_art_panel(380, 460)
+        self._draw_art_panel(340, 430)
 
     def _build_input(
         self,
@@ -162,7 +194,7 @@ class LoginView(ttk.Frame):
             text=label,
             bg=colors["panel"],
             fg=mix_colors(colors["text"], colors["muted"], 0.45),
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 8),
         ).grid(row=0, column=0, sticky="w", pady=(0, 5))
 
         field = tk.Frame(wrapper, bg=colors["input_bg"], highlightthickness=1, highlightbackground=colors["border"])
@@ -180,20 +212,20 @@ class LoginView(ttk.Frame):
             insertbackground=colors["input_fg"],
             font=("Segoe UI", 10),
         )
-        entry.grid(row=0, column=0, sticky="ew", padx=12, pady=10)
+        entry.grid(row=0, column=0, sticky="ew", padx=12, pady=8)
         return wrapper, entry
 
     def _on_resize(self, event: tk.Event) -> None:
         self._last_size = (event.width, event.height)
         self._draw_background(event.width, event.height)
 
-        card_width = min(max(event.width - 120, 760), 940)
-        card_height = min(max(event.height - 110, 470), 540)
+        card_width = min(max(event.width - 120, 700), 900)
+        card_height = min(max(event.height - 120, 430), 500)
         self._card_size = (card_width, card_height)
         self.background.itemconfigure(self.card_window, width=card_width, height=card_height)
         self._update_card_position()
 
-        left_width = max(int(card_width * 0.46), 320)
+        left_width = max(int(card_width * 0.42), 290)
         self.art_panel.configure(width=left_width, height=card_height)
         self._draw_art_panel(left_width, card_height)
 
@@ -205,21 +237,49 @@ class LoginView(ttk.Frame):
         self._background_glow_items.clear()
         self._background_glow_specs.clear()
 
-        self.background.configure(bg=shift_color(colors["bg"], -34))
-        stripes = [
-            (mix_colors(colors["primary"], colors["shell_topbar"], 0.35), 0.0, 0.22),
-            (mix_colors(colors["shell_topbar"], colors["shell_sidebar"], 0.45), 0.22, 0.48),
-            (shift_color(colors["shell_sidebar"], -18), 0.48, 0.76),
-            (shift_color(colors["bg"], -58), 0.76, 1.0),
+        self.background.configure(bg=colors["bg"])
+        base_layers = [
+            (0, 0, width, height * 0.44, mix_colors(colors["panel_alt"], colors["bg"], 0.55)),
+            (0, height * 0.44, width, height, mix_colors(colors["bg"], colors["panel_alt"], 0.14)),
         ]
-        for color, start, end in stripes:
-            item = self.background.create_rectangle(width * start, 0, width * end, height, fill=color, outline="")
+        for x1, y1, x2, y2, color in base_layers:
+            item = self.background.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
             self._background_items.append(item)
 
+        background_shapes = [
+            (-0.18, 0.08, 0.36, 0.92, mix_colors(colors["primary"], colors["panel_alt"], 0.58)),
+            (0.64, -0.08, 1.12, 0.54, mix_colors(colors["accent"], colors["panel_alt"], 0.76)),
+            (0.54, 0.44, 1.1, 1.06, mix_colors(colors["primary_dark"], colors["bg"], 0.82)),
+        ]
+        for x1, y1, x2, y2, color in background_shapes:
+            item = self.background.create_oval(width * x1, height * y1, width * x2, height * y2, fill=color, outline="")
+            self._background_items.append(item)
+
+        sweep = self.background.create_polygon(
+            0,
+            height * 0.88,
+            width * 0.18,
+            height * 0.72,
+            width * 0.42,
+            height * 0.8,
+            width * 0.62,
+            height * 0.6,
+            width,
+            height * 0.7,
+            width,
+            height,
+            0,
+            height,
+            fill=mix_colors(colors["panel_alt"], colors["bg"], 0.45),
+            outline="",
+            smooth=True,
+        )
+        self._background_items.append(sweep)
+
         glow_specs = [
-            (-0.1, 0.05, 0.52, 1.02, mix_colors(colors["primary"], colors["shell_topbar"], 0.2), 0.0),
-            (0.58, -0.1, 1.25, 0.8, shift_color(colors["shell_sidebar"], -8), 1.3),
-            (0.08, 0.68, 0.72, 1.22, mix_colors(colors["ok"], colors["shell_sidebar"], 0.35), 2.1),
+            (-0.1, 0.04, 0.42, 0.92, mix_colors(colors["primary"], colors["panel_alt"], 0.42), 0.0),
+            (0.66, 0.02, 1.12, 0.64, mix_colors(colors["accent"], colors["panel_alt"], 0.82), 1.3),
+            (0.42, 0.56, 1.0, 1.08, mix_colors(colors["primary_dark"], colors["bg"], 0.76), 2.1),
         ]
         for x1, y1, x2, y2, color, phase in glow_specs:
             item = self.background.create_oval(
@@ -244,19 +304,19 @@ class LoginView(ttk.Frame):
         self._art_items.clear()
 
         base_layers = [
-            (0, 0, width, height, shift_color(colors["shell_sidebar"], -42)),
-            (0, height * 0.45, width, height, shift_color(colors["shell_sidebar"], -24)),
-            (0, 0, width, height * 0.38, shift_color(colors["shell_topbar"], -22)),
+            (0, 0, width, height, shift_color(colors["shell_sidebar"], -30)),
+            (0, height * 0.42, width, height, shift_color(colors["shell_sidebar"], -14)),
+            (0, 0, width, height * 0.34, mix_colors(colors["shell_topbar"], colors["primary_dark"], 0.3)),
         ]
         for x1, y1, x2, y2, color in base_layers:
             item = self.art_panel.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
             self._art_items.append(item)
 
         bubble_specs = [
-            (-width * 0.25, -height * 0.08, width * 0.5, height * 0.42, mix_colors(colors["primary"], colors["shell_topbar"], 0.2)),
-            (width * 0.18, height * 0.12, width * 1.05, height * 0.96, mix_colors(colors["primary_dark"], colors["shell_sidebar"], 0.3)),
-            (-width * 0.12, height * 0.42, width * 0.84, height * 1.12, mix_colors(colors["ok"], colors["shell_sidebar"], 0.45)),
-            (width * 0.42, -height * 0.04, width * 1.08, height * 0.48, shift_color(colors["shell_sidebar"], -38)),
+            (-width * 0.25, -height * 0.08, width * 0.54, height * 0.42, mix_colors(colors["primary"], colors["shell_topbar"], 0.3)),
+            (width * 0.22, height * 0.14, width * 1.05, height * 0.96, mix_colors(colors["primary_dark"], colors["shell_sidebar"], 0.38)),
+            (-width * 0.12, height * 0.5, width * 0.82, height * 1.12, mix_colors(colors["ok"], colors["shell_sidebar"], 0.52)),
+            (width * 0.44, -height * 0.04, width * 1.08, height * 0.5, shift_color(colors["shell_sidebar"], -30)),
         ]
         for x1, y1, x2, y2, color in bubble_specs:
             item = self.art_panel.create_oval(x1, y1, x2, y2, fill=color, outline="")
@@ -279,7 +339,7 @@ class LoginView(ttk.Frame):
             height,
             0,
             height,
-            fill=mix_colors(colors["primary_dark"], colors["shell_sidebar"], 0.55),
+            fill=mix_colors(colors["primary_dark"], colors["shell_sidebar"], 0.62),
             outline="",
             smooth=True,
         )
@@ -302,7 +362,7 @@ class LoginView(ttk.Frame):
             height,
             0,
             height,
-            fill=shift_color(colors["shell_sidebar"], -22),
+            fill=shift_color(colors["shell_sidebar"], -16),
             outline="",
             smooth=True,
         )
@@ -341,9 +401,9 @@ class LoginView(ttk.Frame):
 
         title = self.art_panel.create_text(
             width * 0.12,
-            height * 0.62,
+            height * 0.58,
             anchor="nw",
-            text="Connectez votre\npharmacie",
+            text="Bienvenue dans\nvotre officine",
             fill=colors["shell_sidebar_text"],
             font=("Segoe UI Semibold", 26),
         )
@@ -351,27 +411,21 @@ class LoginView(ttk.Frame):
 
         subtitle = self.art_panel.create_text(
             width * 0.12,
-            height * 0.79,
+            height * 0.75,
             anchor="nw",
             width=width * 0.68,
-            text="Pilotez les ventes, le stock et les rapports depuis un espace fiable et centralise.",
+            text="Retrouvez vos ventes, votre stock et vos controles quotidiens dans un espace plus lisible et plus stable.",
             fill=mix_colors(colors["shell_sidebar_text"], colors["panel_alt"], 0.4),
             font=("Segoe UI", 11),
         )
         self._art_items.append(subtitle)
 
     def _ensure_shadow_items(self) -> None:
-        colors = current_colors()
-        if self._shadow_items:
-            for item in self._shadow_items:
-                self.background.tag_lower(item, self.card_window)
+        if not self._shadow_items:
             return
-
-        outer_shadow = self.background.create_rectangle(0, 0, 0, 0, fill=shift_color(colors["bg"], -78), outline="")
-        inner_shadow = self.background.create_rectangle(0, 0, 0, 0, fill=shift_color(colors["shell_sidebar"], -42), outline="")
-        self._shadow_items = [outer_shadow, inner_shadow]
         for item in self._shadow_items:
-            self.background.tag_lower(item, self.card_window)
+            self.background.delete(item)
+        self._shadow_items.clear()
 
     def _update_card_position(self) -> None:
         width, height = self._last_size
@@ -385,23 +439,10 @@ class LoginView(ttk.Frame):
         display_width = card_width * scale
         display_height = card_height * scale
         center_x = width / 2
-        center_y = (height / 2) + y_offset
+        center_y = (height / 2) - 6 + y_offset
 
         self.background.coords(self.card_window, center_x, center_y)
         self.background.itemconfigure(self.card_window, width=display_width, height=display_height)
-
-        self._ensure_shadow_items()
-        shadow_offsets = [(30, 32, 0.34), (18, 18, 0.16)]
-        for item, (dx, dy, spread) in zip(self._shadow_items, shadow_offsets):
-            spread_x = display_width * spread
-            spread_y = display_height * (spread * 0.58)
-            self.background.coords(
-                item,
-                center_x - (display_width / 2) + dx - spread_x * 0.12,
-                center_y - (display_height / 2) + dy - spread_y * 0.12,
-                center_x + (display_width / 2) + dx + spread_x,
-                center_y + (display_height / 2) + dy + spread_y,
-            )
         self.background.tag_raise(self.card_window)
 
     def _start_intro_animation(self) -> None:
